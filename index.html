@@ -4,6 +4,7 @@
   <meta charset="utf-8"/>
   <title>Digital Signage Player</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
       --header-gap: 2.5vh; 
@@ -129,6 +130,35 @@
       margin-top: 2vh; 
       font-size: 2.5vh; 
       color: #aaa; 
+    }
+    
+    /* Realtime status indicator */
+    #realtime-status {
+      position: fixed;
+      top: 1vh;
+      left: 1vw;
+      padding: 0.5vh 1vw;
+      border-radius: 1vh;
+      font-size: 1.8vh;
+      background: rgba(0,0,0,0.7);
+      color: #aaa;
+      z-index: 1000;
+      display: none;
+    }
+    
+    #realtime-status.connected {
+      color: #19c37d;
+      display: block;
+    }
+    
+    #realtime-status.connecting {
+      color: #ffa500;
+      display: block;
+    }
+    
+    #realtime-status.disconnected {
+      color: #ff4444;
+      display: block;
     }
 
     /* Events area */
@@ -379,6 +409,7 @@
 </head>
 <body>
   <div id="network-status" title="Network Status"></div>
+  <div id="realtime-status">●</div>
   <div id="platform-indicator">Detecting...</div>
   
   <div id="header" class="safe">
@@ -413,7 +444,7 @@
   (function(){
     // Configuration
     var CONFIG = {
-      POLL_INTERVAL: 10000,
+      POLL_INTERVAL: 60000, // Reduced to 60 seconds since we have realtime
       PROGRESS_UPDATE_INTERVAL: 2000,
       DEFAULT_EVENT_DURATION: 90,
       FORCE_12H_CLOCK: true,
@@ -443,6 +474,113 @@
       isRegistered: false,
       lastSuccessfulData: null
     };
+    
+    // Supabase Realtime variables
+    var supabaseClient = null;
+    var realtimeChannel = null;
+    var currentRinkId = null;
+    
+    // Initialize Supabase
+    function initSupabase() {
+      if (typeof window.supabase === 'undefined') {
+        console.log('Supabase library not loaded, realtime disabled');
+        return;
+      }
+      
+      try {
+        supabaseClient = window.supabase.createClient(
+          'https://excfbqwqzryjlsrgfpjm.supabase.co',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4Y2ZicXdxenJ5amxzcmdmcGptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NzMwNzMsImV4cCI6MjA2OTQ0OTA3M30.OdYAso9j7j4VIefQ76nI0TSoFtqJIUYcAtX5P9KYf8M'
+        );
+        console.log('Supabase initialized successfully');
+        updateRealtimeStatus('disconnected');
+      } catch(e) {
+        console.log('Failed to initialize Supabase:', e);
+      }
+    }
+    
+    // Update realtime status indicator
+    function updateRealtimeStatus(status) {
+      var indicator = document.getElementById('realtime-status');
+      if (!indicator) return;
+      
+      indicator.className = status;
+      switch(status) {
+        case 'connected':
+          indicator.textContent = '● Live';
+          break;
+        case 'connecting':
+          indicator.textContent = '● Connecting...';
+          break;
+        case 'disconnected':
+          indicator.textContent = '● Offline';
+          break;
+      }
+    }
+    
+    // Subscribe to realtime updates for a specific rink
+    function subscribeToRealtime(rinkId) {
+      if (!supabaseClient || !rinkId) {
+        console.log('Cannot subscribe: missing supabaseClient or rinkId');
+        return;
+      }
+      
+      // Clean up existing subscription
+      if (realtimeChannel) {
+        console.log('Removing existing channel subscription');
+        supabaseClient.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+      
+      currentRinkId = rinkId;
+      console.log('Subscribing to realtime updates for rink:', rinkId);
+      updateRealtimeStatus('connecting');
+      
+      // Create new subscription
+      realtimeChannel = supabaseClient
+        .channel('rink-updates-' + rinkId)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'bookings',
+            filter: 'rink_id=eq.' + rinkId
+          },
+          function(payload) {
+            console.log('Booking update received:', payload.eventType);
+            // Immediately fetch fresh data when bookings change
+            checkAndLoadEvents();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'rinks',
+            filter: 'id=eq.' + rinkId
+          },
+          function(payload) {
+            console.log('Rink update received:', payload.eventType);
+            // Refresh if rink details change (logo, ticker, etc)
+            checkAndLoadEvents();
+          }
+        )
+        .subscribe(function(status) {
+          console.log('Realtime subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            updateRealtimeStatus('connected');
+            console.log('Successfully subscribed to realtime updates');
+          } else if (status === 'CHANNEL_ERROR') {
+            updateRealtimeStatus('disconnected');
+            console.log('Realtime subscription error');
+          } else if (status === 'TIMED_OUT') {
+            updateRealtimeStatus('disconnected');
+            console.log('Realtime subscription timed out');
+          }
+        });
+    }
     
     // Polyfills for older browsers
     if (!window.requestAnimationFrame) {
@@ -626,7 +764,7 @@
       }
     }
     
-    // Time formatting
+    // Time formatting functions remain the same
     function format12(h, m){ 
       var ap = h >= 12 ? 'PM' : 'AM'; 
       h = h % 12; 
@@ -1192,12 +1330,18 @@
       }
     }
     
-    // Main data handling
+    // Main data handling - Modified to handle realtime subscription
     function maybeRender(data){
       var sig = signatureFromData(data);
       
       // Store the payload for re-rendering
       state.lastPayload = data;
+      
+      // Subscribe to realtime if we have a rink_id and it's different
+      if (data && data.rink_id && data.rink_id !== currentRinkId) {
+        console.log('Rink ID changed, subscribing to realtime:', data.rink_id);
+        subscribeToRealtime(data.rink_id);
+      }
       
       if (sig && sig === state.lastSignature){ 
         updateLiveProgressBars(); 
@@ -1286,6 +1430,9 @@
       stopAutoScroll();
       if (state.pollHandle) clearInterval(state.pollHandle);
       if (TICKER.animFrame) cancelAnimationFrame(TICKER.animFrame);
+      if (realtimeChannel && supabaseClient) {
+        supabaseClient.removeChannel(realtimeChannel);
+      }
     });
     
     // Check for events that should go live or expire
@@ -1330,6 +1477,9 @@
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
     state.isRegistered = getRegistrationStatus();
+    
+    // Initialize Supabase for realtime
+    initSupabase();
     
     var codeEl = document.getElementById('screen-code'); 
     if (codeEl) codeEl.textContent = state.screenCode;
