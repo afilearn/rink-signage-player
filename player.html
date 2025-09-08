@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Digital Signage Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    :root { 
+      --header-gap: 2.5vh; 
+      --header-pad-y: 2.2vh;
+    }
+    
+    /* GPU acceleration for smooth animations */
+    * {
+      -webkit-transform: translateZ(0);
+      -webkit-backface-visibility: hidden;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #0a0a0a;
+      color: #fff;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .safe { 
+      padding: 1.5vh 2vw 4vh; 
+      box-sizing: border-box; 
+      width: 100%; 
+    }
+    
+    /* Header */
+    #header {
+      display: none;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 2vw;
+      border-bottom: 0.4vh solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.3);
+      position: relative;
+      z-index: 100;
+      width: 100%;
+      min-height: 9vh;
+      box-sizing: border-box;
+    }
+    
+    #header-left {
+      display: flex;
+      align-items: center;
+      gap: 1.5vw;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    
+    #header-logo {
+      height: 9.5vh;
+      width: 9.5vh;
+      border-radius: 50%;
+      background: #fff;
+      object-fit: contain;
+      display: none;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      flex-shrink: 0;
+    }
+    
+    #rink-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 4.6vh;
+      font-weight: 700;
+      letter-spacing: 0.25vh;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #ffffff;
+      line-height: 1.05;
+    }
+    
+    #clock {
+      font-size: 4.5vh;
+      color: #ddd;
+      white-space: nowrap;
+      text-align: right;
+      font-weight: 700;
+      letter-spacing: 0.2vh;
+      line-height: 1;
+      justify-self: end;
+      min-width: max-content;
+    }
+
+    /* Pairing screen */
+    #code-screen { 
+      flex: 1; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      justify-content: center; 
+      text-align: center; 
+      gap: 3vh; 
+      background: rgba(247,116,54,0.05);
+    }
+    
+    #code-screen h1 { 
+      font-size: 7vh; 
+      margin: 0; 
+      font-weight: 300; 
+      color: #f77436;
+    }
+    
+    #screen-code { 
+      font-size: 5vh; 
+      font-weight: 600; 
+      background: #1a1a1a;
+      padding: 3vh 5vh; 
+      border-radius: 2vh; 
+      letter-spacing: 1vh; 
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      border: 1px solid rgba(247, 116, 54, 0.3); 
+    }
+    
+    .platform-info { 
+      margin-top: 2vh; 
+      font-size: 2.5vh; 
+      color: #aaa; 
+    }
+
+    /* Events area */
+    #event-screen { 
+      display: none; 
+      flex-direction: column; 
+      height: 100%; 
+    }
+    
+    .event-only { 
+      position: relative; 
+      flex: 1; 
+      width: 100%; 
+      padding: 0 3vw 8vh; 
+      box-sizing: border-box; 
+      font-size: 3.5vh; 
+      overflow-y: auto; 
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .event-header, .event-row { 
+      display: flex; 
+      padding: 2vh 1vw; 
+      border-bottom: 0.4vh solid rgba(255,255,255,0.05); 
+      align-items: center; 
+    }
+    
+    .event-header { 
+      position: sticky; 
+      top: 0; 
+      z-index: 10; 
+      font-weight: 600; 
+      background: rgba(13,13,13,0.95);
+      color: #cfcfcf; 
+      border-top: 0.4vh solid rgba(255,255,255,0.05); 
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+    }
+    
+    .event-row:nth-child(even) { 
+      background: rgba(255,255,255,0.02); 
+    }
+    
+    .event-cell { 
+      flex: 1; 
+      padding: 0 2vw; 
+    }
+    
+    .event-cell.time { 
+      text-align: center; 
+      font-variant-numeric: tabular-nums; 
+    }
+    
+    .event-cell.room { 
+      text-align: right; 
+    }
+
+    .live { 
+      background: rgba(31,18,10,0.8);
+      border-bottom-color: rgba(247,116,54,0.3); 
+      font-weight: 700; 
+    }
+    
+    .live .live-pill { 
+      display: inline-block; 
+      margin-left: 1vw; 
+      font-size: 2.4vh; 
+      line-height: 1; 
+      padding: 0.8vh 1.4vh; 
+      background: #f77436;
+      color: #1a0d08; 
+      border-radius: 1.5vh; 
+      vertical-align: middle; 
+      font-weight: 700; 
+      box-shadow: 0 2px 10px rgba(247,116,54,0.4); 
+    }
+    
+    .progress { 
+      height: 0.5vh; 
+      background: rgba(26,26,26,0.8); 
+      width: 100%; 
+      border-radius: 0.25vh; 
+      overflow: hidden; 
+    }
+    
+    .progress-fill { 
+      height: 100%; 
+      background: #f77436;
+      width: 0%; 
+      -webkit-transition: width 1s ease-out;
+      transition: width 1s ease-out; 
+      box-shadow: 0 0 10px rgba(247,116,54,0.5); 
+    }
+    
+    /* Animation for removing expired events */
+    @keyframes fadeOutSlide {
+      0% { 
+        opacity: 1; 
+        transform: translateX(0);
+        max-height: 100px;
+      }
+      50% {
+        opacity: 0;
+        transform: translateX(-50px);
+      }
+      100% { 
+        opacity: 0; 
+        transform: translateX(-100px); 
+        max-height: 0;
+        padding: 0;
+        border: 0;
+      }
+    }
+    
+    /* Animation for new live events */
+    @keyframes pulseIn {
+      0% { 
+        transform: scale(0.98);
+        opacity: 0.8;
+      }
+      50% {
+        transform: scale(1.02);
+      }
+      100% { 
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+    
+    .event-row {
+      transition: all 0.3s ease-out;
+    }
+    
+    .event-row.expired {
+      animation: fadeOutSlide 0.5s ease-out forwards;
+    }
+
+    /* Empty state */
+    #empty-screen { 
+      display: none; 
+      flex: 1; 
+      align-items: center; 
+      justify-content: center; 
+      flex-direction: column; 
+      gap: 3vh; 
+      text-align: center; 
+      padding: 0 2vw; 
+      box-sizing: border-box; 
+      background: rgba(255,255,255,0.02);
+    }
+    
+    #empty-logo { 
+      height: 22vh; 
+      width: 22vh; 
+      border-radius: 50%; 
+      object-fit: contain; 
+      background: #fff;
+      display: none; 
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3); 
+    }
+    
+    #empty-title { 
+      font-size: 4.6vh; 
+      font-weight: 600; 
+      letter-spacing: 0.3vh; 
+      text-transform: uppercase; 
+      max-width: 90vw; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      display: none; 
+      color: #ffffff;
+    }
+    
+    #empty-status { 
+      font-size: 4vh; 
+      color: #bbb; 
+      font-weight: 300; 
+    }
+    
+    #empty-clock { 
+      font-size: 3.6vh; 
+      color: #999; 
+      margin-top: 1.5vh; 
+      font-weight: 300; 
+    }
+
+    /* Ticker */
+    #ticker { 
+      display: none; 
+      height: 6.5vh; 
+      min-height: 44px; 
+      border-top: 0.4vh solid rgba(255,255,255,0.1); 
+      background: rgba(11,11,11,0.95);
+      overflow: hidden; 
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
+    }
+    
+    #ticker-track { 
+      position: relative; 
+      white-space: nowrap; 
+      will-change: transform; 
+      line-height: 6.5vh; 
+      font-size: 3vh; 
+      color: #ddd; 
+      padding-left: 0; 
+      -webkit-transform: translateX(0);
+      transform: translateX(0); 
+      font-weight: 400; 
+    }
+
+    /* Status badges */
+    #network-status { 
+      position: fixed; 
+      top: 1vh; 
+      right: 1vw; 
+      width: 12px; 
+      height: 12px; 
+      border-radius: 50%; 
+      background: #19c37d; 
+      z-index: 1000; 
+    }
+    
+    #network-status.slow { 
+      background: #ffa500; 
+    }
+    
+    #network-status.offline { 
+      background: #ff4444; 
+    }
+    
+    #platform-indicator { 
+      position: fixed; 
+      bottom: 1vh; 
+      right: 1vw; 
+      font-size: 2vh; 
+      color: #666; 
+      background: rgba(0,0,0,0.7); 
+      padding: 0.5vh 1vw; 
+      border-radius: 1vh; 
+      z-index: 1000; 
+    }
+
+    @media (max-width: 1200px) { 
+      #rink-title { font-size: 4.2vh; } 
+      #clock { font-size: 3.4vh; } 
+      .event-only { font-size: 3vh; } 
+    }
+  </style>
+</head>
+<body>
+  <div id="network-status" title="Network Status"></div>
+  <div id="platform-indicator">Detecting...</div>
+  
+  <div id="header" class="safe">
+    <div id="header-left">
+      <img id="header-logo" alt="Logo">
+      <div id="rink-title">Rink</div>
+    </div>
+    <div id="clock">—</div>
+  </div>
+  
+  <div id="code-screen" class="safe">
+    <h1>Let's get started</h1>
+    <div style="font-size: 3vh; opacity: 0.8;">Enter this code in your CMS to register this screen:</div>
+    <div id="screen-code">--------</div>
+    <div class="platform-info" id="platform-info">Detecting platform...</div>
+  </div>
+  
+  <div id="event-screen">
+    <div class="event-only" id="events">Loading events...</div>
+  </div>
+  
+  <div id="empty-screen">
+    <img id="empty-logo" alt="Logo">
+    <div id="empty-title"></div>
+    <div id="empty-status">No events scheduled today</div>
+    <div id="empty-clock">—</div>
+  </div>
+  
+  <div id="ticker"><div id="ticker-track"></div></div>
+
+  <script>
+  (function(){
+    // Configuration
+    var CONFIG = {
+      POLL_INTERVAL: 10000,
+      PROGRESS_UPDATE_INTERVAL: 2000,
+      DEFAULT_EVENT_DURATION: 90,
+      FORCE_12H_CLOCK: true,
+      API_TIMEOUT: 8000,
+      CACHE_TTL: 86400000, // 24 hours
+      RETRY_DELAYS: [1000, 2000, 4000, 8000],
+      SCROLL: {
+        SPEED: 1,
+        INTERVAL: 30,
+        PAUSE_TOP: 1500,
+        PAUSE_BOTTOM: 3000
+      },
+      TICKER_SPEED: 100
+    };
+    
+    // State management
+    var state = {
+      screenCode: '',
+      lastPayload: null,
+      lastSignature: null,
+      networkFailures: 0,
+      retryCount: 0,
+      userInteracting: false,
+      scrollTimer: null,
+      scrollPause: null,
+      pollHandle: null,
+      isRegistered: false,
+      lastSuccessfulData: null
+    };
+    
+    // Polyfills for older browsers
+    if (!window.requestAnimationFrame) {
+      window.requestAnimationFrame = window.webkitRequestAnimationFrame || 
+                                     window.mozRequestAnimationFrame || 
+                                     function(cb){ setTimeout(cb, 1000/60); };
+    }
+    
+    // Utility functions
+    function parseQuery(){ 
+      var out = {}; 
+      try{ 
+        var q = (location.search || '').replace(/^\?/, ''); 
+        if (!q) return out; 
+        var parts = q.split('&'); 
+        for (var i = 0; i < parts.length; i++){ 
+          var kv = parts[i].split('='); 
+          if (!kv[0]) continue; 
+          var k = decodeURIComponent(kv[0]); 
+          var v = kv.length > 1 ? decodeURIComponent(kv[1].replace(/\+/g, ' ')) : ''; 
+          out[k] = v; 
+        } 
+      } catch(e){
+        console.log('parseQuery error:', e);
+      } 
+      return out; 
+    }
+    
+    function getLocal(k){ 
+      try{ 
+        return localStorage ? localStorage.getItem(k) : null; 
+      } catch(e){ 
+        return null; 
+      } 
+    }
+    
+    function setLocal(k, v){ 
+      try{ 
+        if (localStorage) localStorage.setItem(k, v); 
+      } catch(e){} 
+    }
+    
+    function getCacheWithExpiry(key) {
+      try {
+        var item = getLocal(key);
+        if (!item) return null;
+        var parsed = JSON.parse(item);
+        if (Date.now() > parsed.expiry) {
+          localStorage.removeItem(key);
+          return null;
+        }
+        return parsed.data;
+      } catch(e) {
+        return null;
+      }
+    }
+    
+    function setCacheWithExpiry(key, data) {
+      try {
+        var item = {
+          data: data,
+          expiry: Date.now() + CONFIG.CACHE_TTL
+        };
+        setLocal(key, JSON.stringify(item));
+      } catch(e) {}
+    }
+    
+    function getRegistrationStatus() {
+      var status = getLocal('registration_status_' + state.screenCode);
+      return status === 'true';
+    }
+    
+    function setRegistrationStatus(registered) {
+      state.isRegistered = registered;
+      setLocal('registration_status_' + state.screenCode, registered ? 'true' : 'false');
+    }
+    
+    var ESC_MAP = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+    function esc(s){ 
+      s = String(s == null ? '' : s); 
+      return s.replace(/[&<>"']/g, function(c){ 
+        return ESC_MAP[c] || c; 
+      }); 
+    }
+    
+    function pad2(n){ 
+      return (n < 10 ? '0' : '') + n; 
+    }
+    
+    function show(id){ 
+      var el = document.getElementById(id); 
+      if (!el) return; 
+      var disp = (id === 'code-screen' || id === 'empty-screen') ? 'flex' : 
+                 (id === 'header' ? 'grid' : 'block'); 
+      el.style.display = disp; 
+    }
+    
+    function hide(id){ 
+      var el = document.getElementById(id); 
+      if (el) el.style.display = 'none'; 
+    }
+    
+    // Platform detection
+    function detectPlatform() {
+      var ua = navigator.userAgent.toLowerCase();
+      var platform = '';
+      
+      if (ua.indexOf('webos') !== -1 || ua.indexOf('netcast') !== -1 || window.PalmServiceBridge) {
+        platform = 'LG webOS Smart TV';
+      } else if (ua.indexOf('tizen') !== -1 || window.tizen) {
+        platform = 'Samsung Tizen Smart TV';
+      } else if (ua.indexOf('android tv') !== -1 || ua.indexOf('googletv') !== -1) {
+        platform = 'Android TV';
+      } else if (ua.indexOf('chrome') !== -1) {
+        platform = 'Chrome Browser';
+      } else {
+        platform = 'Web Browser';
+      }
+      
+      var el1 = document.getElementById('platform-indicator');
+      var el2 = document.getElementById('platform-info');
+      if (el1) el1.textContent = platform;
+      if (el2) el2.textContent = platform;
+    }
+    
+    // Screen code generation
+    function getOrCreateScreenCode(){
+      var q = parseQuery();
+      var code = q.code || getLocal('screen_uuid');
+      
+      if (!code){
+        var fp = navigator.userAgent + navigator.language + screen.width + 
+                 screen.height + navigator.hardwareConcurrency;
+        var h = 0; 
+        for (var i = 0; i < fp.length; i++){ 
+          h = ((h << 5) - h) + fp.charCodeAt(i); 
+          h |= 0; 
+        }
+        code = Math.abs(h).toString(16).slice(0, 8).toUpperCase();
+        // Fix for padStart compatibility
+        while (code.length < 8) code = '0' + code;
+      }
+      
+      code = String(code).replace(/\s+/g, '').toUpperCase();
+      setLocal('screen_uuid', code);
+      state.screenCode = code;
+      return code;
+    }
+    
+    // Network status management
+    var networkStatus = document.getElementById('network-status');
+    var net = {failures: 0, lastSuccess: Date.now(), responseTime: 0};
+    
+    function updateNetworkStatus(status, rt){
+      if (!networkStatus) return;
+      
+      if (status === 'success'){
+        net.failures = 0; 
+        net.lastSuccess = Date.now(); 
+        net.responseTime = rt || 0;
+        state.networkFailures = 0;
+        
+        if (rt < 2000){ 
+          networkStatus.className = ''; 
+          networkStatus.title = 'Connected'; 
+        } else { 
+          networkStatus.className = 'slow'; 
+          networkStatus.title = 'Slow Connection'; 
+        }
+      } else {
+        net.failures++;
+        state.networkFailures++;
+        
+        if (net.failures < 3 && (Date.now() - net.lastSuccess) < 60000){ 
+          networkStatus.className = 'slow'; 
+          networkStatus.title = 'Connection Issues'; 
+        } else { 
+          networkStatus.className = 'offline'; 
+          networkStatus.title = 'Connection Lost'; 
+        }
+      }
+    }
+    
+    // Time formatting
+    function format12(h, m){ 
+      var ap = h >= 12 ? 'PM' : 'AM'; 
+      h = h % 12; 
+      if (h === 0) h = 12; 
+      return h + ':' + pad2(m) + ' ' + ap; 
+    }
+    
+    function to12h(input){
+      var s = String(input || '').trim(); 
+      if (!s) return '';
+      
+      var rng = s.split(/\s*[-–—]\s*/); 
+      if (rng.length === 2) return to12h(rng[0]) + ' – ' + to12h(rng[1]);
+      
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)){ 
+        var d = new Date(s); 
+        if (!isNaN(d.getTime())) return format12(d.getHours(), d.getMinutes()); 
+      }
+      
+      var m = s.replace(/\./g, '').replace(/\s+/g, ' ')
+               .match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM)?$/i);
+      if (m){ 
+        var h = parseInt(m[1], 10);
+        var mins = parseInt(m[2] || '0', 10);
+        var ap = m[3] ? m[3].toUpperCase() : null; 
+        if (ap){ 
+          if (ap === 'PM' && h < 12) h += 12; 
+          if (ap === 'AM' && h === 12) h = 0; 
+        } 
+        return format12(h, mins); 
+      }
+      
+      return s;
+    }
+    
+    function parseTimeToDate(t){
+      if (!t) return null; 
+      var s = String(t).trim();
+      
+      if (/^\d{4}-\d{2}-\d{2}T/.test(s)){ 
+        var d = new Date(s); 
+        return isNaN(d.getTime()) ? null : d; 
+      }
+      
+      var m = s.replace(/\./g, '').replace(/\s+/g, ' ')
+               .match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(AM|PM)?$/i);
+      if (m){ 
+        var now = new Date(); 
+        var h = parseInt(m[1], 10);
+        var mins = parseInt(m[2] || '0', 10);
+        var ap = m[3] ? m[3].toUpperCase() : null; 
+        if (ap){ 
+          if (ap === 'PM' && h < 12) h += 12; 
+          if (ap === 'AM' && h === 12) h = 0; 
+        } 
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mins, 0, 0); 
+      }
+      
+      var parts = s.split(/\s*[-–—]\s*/); 
+      if (parts.length === 2) return parseTimeToDate(parts[0]);
+      
+      return null;
+    }
+    
+    function getEventTimes(ev){
+      var sRaw = ev && (ev.start_time || ev.startTime || ev.start || 
+                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[0]));
+      var eRaw = ev && (ev.end_time || ev.endTime || ev.end || 
+                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[1]));
+      
+      var start = parseTimeToDate(sRaw);
+      var end = parseTimeToDate(eRaw);
+      
+      if (start && !end){ 
+        end = new Date(start.getTime() + CONFIG.DEFAULT_EVENT_DURATION * 60 * 1000); 
+      }
+      
+      if (start && end && end.getTime() <= start.getTime()){ 
+        end = new Date(end.getTime() + 24 * 60 * 60 * 1000); 
+      }
+      
+      return {start: start, end: end};
+    }
+    
+    // Clock
+    var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    
+    function fmtClock(d){ 
+      var dow = DAYS[d.getDay()];
+      var mon = MONTHS[d.getMonth()];
+      var day = d.getDate();
+      var h = d.getHours();
+      var m = pad2(d.getMinutes()); 
+      
+      if (CONFIG.FORCE_12H_CLOCK){ 
+        var ap = h >= 12 ? 'PM' : 'AM'; 
+        var hh = h % 12; 
+        if (hh === 0) hh = 12; 
+        return dow + ', ' + mon + ' ' + day + ' · ' + hh + ':' + m + ' ' + ap; 
+      } 
+      
+      return dow + ', ' + mon + ' ' + day + ' · ' + pad2(h) + ':' + m; 
+    }
+    
+    function updateClock(){ 
+      var now = new Date(); 
+      var s = fmtClock(now); 
+      var el1 = document.getElementById('clock'); 
+      if (el1) el1.textContent = s; 
+      var el2 = document.getElementById('empty-clock'); 
+      if (el2) el2.textContent = s; 
+    }
+    
+    // API communication with retry
+    function buildApiUrl(){ 
+      return 'https://postsignage-70d772.ingress-daribow.ewp.live/wp-json/signage/v1/events?id=' + 
+             encodeURIComponent(state.screenCode); 
+    }
+    
+    function xhrGetWithRetry(url, ok, fail){
+      var t0 = Date.now();
+      
+      function attempt() {
+        try{
+          var x = new XMLHttpRequest();
+          x.open('GET', url, true);
+          x.setRequestHeader('Cache-Control', 'no-cache');
+          
+          x.onreadystatechange = function(){
+            if (x.readyState === 4){
+              var dt = Date.now() - t0;
+              
+              if (x.status >= 200 && x.status < 300){ 
+                updateNetworkStatus('success', dt); 
+                state.retryCount = 0;
+                ok && ok(x.responseText); 
+              } else { 
+                handleError(new Error('HTTP ' + x.status));
+              }
+            }
+          };
+          
+          x.timeout = CONFIG.API_TIMEOUT;
+          x.ontimeout = function(){ 
+            handleError(new Error('timeout')); 
+          };
+          
+          x.send(null);
+        } catch(e){ 
+          handleError(e);
+        }
+      }
+      
+      function handleError(e) {
+        updateNetworkStatus('error');
+        
+        if (state.retryCount < CONFIG.RETRY_DELAYS.length) {
+          var delay = CONFIG.RETRY_DELAYS[state.retryCount];
+          state.retryCount++;
+          setTimeout(attempt, delay);
+        } else {
+          fail && fail(e);
+        }
+      }
+      
+      attempt();
+    }
+
+    // Ticker management
+    var TICKER = {text: '', x: 0, w: 0, holderW: 0, emptyStreak: 0, lastTime: 0, animFrame: null};
+    
+    function normalizeText(t){ 
+      return String(t || '').replace(/\s+/g, ' ').trim(); 
+    }
+    
+    function measureTicker(){ 
+      var holder = document.getElementById('ticker');
+      var track = document.getElementById('ticker-track'); 
+      if (!holder || !track) return; 
+      
+      TICKER.holderW = holder.clientWidth || 1920; 
+      var original = track.textContent; 
+      
+      if (TICKER.text && original !== TICKER.text) track.textContent = TICKER.text; 
+      
+      var rect = track.getBoundingClientRect(); 
+      TICKER.w = rect.width || track.scrollWidth || track.offsetWidth || (TICKER.text.length * 12); 
+    }
+    
+    function applyTicker(){ 
+      var holder = document.getElementById('ticker');
+      var track = document.getElementById('ticker-track'); 
+      if (!holder || !track) return; 
+      
+      if (!TICKER.text){ 
+        holder.style.display = 'none'; 
+        return; 
+      } 
+      
+      holder.style.display = 'block'; 
+      track.textContent = TICKER.text; 
+      measureTicker(); 
+      
+      if (TICKER.x === 0) TICKER.x = TICKER.holderW; 
+      track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
+    }
+    
+    function updateTickerText(newText){ 
+      var norm = normalizeText(newText); 
+      
+      if (!norm){ 
+        if (TICKER.text){ 
+          TICKER.emptyStreak++; 
+          if (TICKER.emptyStreak <= 3) return; 
+        } 
+        TICKER.text = ''; 
+        TICKER.emptyStreak = 0; 
+        applyTicker(); 
+        return; 
+      } 
+      
+      TICKER.emptyStreak = 0; 
+      if (norm === TICKER.text) return; 
+      
+      TICKER.text = norm; 
+      applyTicker(); 
+    }
+    
+    // Optimized animation loop
+    function animationLoop(ts){ 
+      if (!TICKER.lastTime) TICKER.lastTime = ts; 
+      var dt = ts - TICKER.lastTime; 
+      TICKER.lastTime = ts; 
+      
+      var track = document.getElementById('ticker-track'); 
+      var holder = document.getElementById('ticker');
+      
+      // Only animate if ticker is visible and has text
+      if (TICKER.text && track && holder && holder.style.display !== 'none'){ 
+        TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
+        if (TICKER.x + TICKER.w <= 0) TICKER.x = TICKER.holderW; 
+        track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
+      } 
+      
+      TICKER.animFrame = requestAnimationFrame(animationLoop); 
+    }
+    
+    // Window resize handler
+    window.addEventListener('resize', measureTicker);
+
+    // Data signature for change detection
+    function signatureFromData(data){
+      try{
+        var raw = Array.isArray(data && data.events) ? data.events : [];
+        var norm = raw.map(function(ev){
+          return {
+            t: ev.teams || ev.title || '',
+            s: ev.start_time || ev.startTime || ev.start || ev.time || '',
+            e: ev.end_time || ev.endTime || ev.end || '',
+            r: ev.room || ev.location || ev.room_name || ''
+          };
+        });
+        norm.sort(function(a, b){ 
+          return String(a.s).localeCompare(String(b.s)); 
+        });
+        return JSON.stringify({
+          title: data && data.rink_title || '',
+          logo: data && data.rink_logo || '',
+          tick: (data && (data.announcement || data.ticker_text)) || '',
+          events: norm
+        });
+      } catch(e){ 
+        return null; 
+      }
+    }
+    
+    // Progress bar updates and expired event removal
+    function updateLiveProgressBars(){
+      var bars = document.querySelectorAll('.progress[data-start] .progress-fill'); 
+      var now = Date.now();
+      var needsRefresh = false;
+      
+      for (var i = 0; i < bars.length; i++){ 
+        var bar = bars[i];
+        var holder = bar.parentElement; 
+        var s = parseInt(holder.getAttribute('data-start'), 10);
+        var e = parseInt(holder.getAttribute('data-end') || '0', 10); 
+        
+        if (!isNaN(s) && !isNaN(e) && e > s){ 
+          var pct = Math.floor(((now - s) / (e - s)) * 100); 
+          if (pct < 0) pct = 0; 
+          if (pct > 100) {
+            pct = 100;
+            // Event has ended, mark for refresh
+            needsRefresh = true;
+          }
+          bar.style.width = pct + '%'; 
+        } 
+      }
+      
+      // Check all events for expiration
+      var eventRows = document.querySelectorAll('.event-row[data-end-time]');
+      for (var j = 0; j < eventRows.length; j++) {
+        var row = eventRows[j];
+        var endTime = parseInt(row.getAttribute('data-end-time'), 10);
+        if (endTime && now >= endTime) {
+          needsRefresh = true;
+          break;
+        }
+      }
+      
+      // If any event expired, re-render immediately
+      if (needsRefresh && state.lastPayload) {
+        renderFromPayload(state.lastPayload);
+      }
+    }
+
+    // Render events
+    function renderFromPayload(data){
+      var raw = (data && data.events) || [];
+      var now = new Date();
+      var title = (data && data.rink_title) || '';
+      var logo = (data && data.rink_logo) || '';
+      var ticker = (data && (data.announcement || data.ticker_text)) || '';
+      
+      // Track that we have valid data
+      if (data && data.registered) {
+        setRegistrationStatus(true);
+        state.lastSuccessfulData = data;
+      }
+      
+      var events = [];
+      
+      for (var i = 0; i < raw.length; i++){
+        var ev = raw[i] || {};
+        var t = getEventTimes(ev);
+        
+        if (!t.start && !t.end) continue;
+        if (t.end && now.getTime() >= t.end.getTime()) continue;
+        
+        ev.__start = t.start ? t.start.getTime() : Number.MAX_SAFE_INTEGER;
+        ev.__times = t;
+        events.push(ev);
+      }
+      
+      events.sort(function(a, b){ 
+        return a.__start - b.__start; 
+      });
+      
+      // Limit to 50 events max to prevent performance issues
+      if (events.length > 50) {
+        events = events.slice(0, 50);
+      }
+      
+      // Update header
+      var titleEl = document.getElementById('rink-title');
+      var headerLogo = document.getElementById('header-logo');
+      if (titleEl) titleEl.textContent = title || 'Rink';
+      if (headerLogo){ 
+        if (logo){ 
+          headerLogo.src = logo; 
+          headerLogo.style.display = 'inline-block'; 
+          headerLogo.onerror = function() {
+            this.style.display = 'none';
+          };
+        } else { 
+          headerLogo.removeAttribute('src'); 
+          headerLogo.style.display = 'none'; 
+        } 
+      }
+      
+      // Update empty screen
+      var emptyLogo = document.getElementById('empty-logo');
+      var emptyTitle = document.getElementById('empty-title');
+      if (emptyTitle) {
+        emptyTitle.textContent = title || '';
+        emptyTitle.style.display = title ? 'block' : 'none';
+      }
+      if (emptyLogo){ 
+        if (logo){ 
+          emptyLogo.src = logo; 
+          emptyLogo.style.display = 'inline-block'; 
+          emptyLogo.onerror = function() {
+            this.style.display = 'none';
+          };
+        } else { 
+          emptyLogo.removeAttribute('src'); 
+          emptyLogo.style.display = 'none'; 
+        } 
+      }
+      
+      updateTickerText(ticker);
+      
+      if (events && events.length){
+        var html = '<div class="event-header">'
+                 + '<div class="event-cell">Event</div>'
+                 + '<div class="event-cell time">Time</div>'
+                 + '<div class="event-cell room">Room</div>'
+                 + '</div>';
+        
+        for (var j = 0; j < events.length; j++){
+          var ev2 = events[j] || {};
+          var teams = esc(ev2.teams || ev2.title || '');
+          var startRaw = ev2.start_time || ev2.startTime || ev2.start || '';
+          var endRaw = ev2.end_time || ev2.endTime || ev2.end || '';
+          var room = esc(ev2.room || ev2.location || ev2.room_name || '');
+          
+          var timeStr = '';
+          if (startRaw || endRaw){ 
+            var a = to12h(startRaw);
+            var b = to12h(endRaw); 
+            timeStr = a && b ? (a + ' – ' + b) : (a || b); 
+          } else if (ev2.time){ 
+            timeStr = to12h(ev2.time); 
+          }
+          
+          var start = ev2.__times.start;
+          var end = ev2.__times.end;
+          var isLive = false;
+          var pct = null;
+          var sMs = null;
+          var eMs = null;
+          
+          if (start){
+            var n = now.getTime();
+            var s = start.getTime();
+            var e = end ? end.getTime() : null;
+            sMs = s; 
+            eMs = e;
+            
+            if (n >= s && (e === null || n < e)){
+              isLive = true;
+              if (e !== null && e > s){
+                pct = Math.floor(((n - s) / (e - s)) * 100);
+                if (pct < 0) pct = 0; 
+                if (pct > 100) pct = 100;
+              }
+            }
+          }
+          
+          html += '<div class="event-row' + (isLive ? ' live' : '') + '" data-end-time="' + (eMs || '') + '">'
+               +  '<div class="event-cell">' + teams + (isLive ? ' <span class="live-pill">LIVE</span>' : '') + '</div>'
+               +  '<div class="event-cell time">' + (timeStr || '') + '</div>'
+               +  '<div class="event-cell room">' + room + '</div>'
+               +  '</div>';
+          
+          if (isLive && pct !== null){ 
+            html += '<div class="progress" data-start="' + sMs + '" data-end="' + eMs + '">'
+                 +  '<div class="progress-fill" style="width:' + pct + '%"></div></div>'; 
+          }
+        }
+        
+        var eventsEl = document.getElementById('events');
+        if (eventsEl){ 
+          eventsEl.innerHTML = html; 
+          eventsEl.scrollTop = 0; 
+          startAutoScroll(); 
+        }
+        
+        hide('code-screen'); 
+        show('header'); 
+        show('event-screen'); 
+        hide('empty-screen');
+      } else {
+        // No events, but registered - show empty screen
+        hide('code-screen'); 
+        show('header'); 
+        hide('event-screen'); 
+        show('empty-screen'); 
+        stopAutoScroll();
+      }
+    }
+    
+    // Auto-scroll with user interaction detection
+    function startAutoScroll(){
+      var el = document.getElementById('events');
+      if (!el) return;
+      
+      stopAutoScroll();
+      
+      if (el.scrollHeight <= el.clientHeight + 2){ 
+        el.scrollTop = 0; 
+        return; 
+      }
+      
+      if (state.userInteracting) return;
+      
+      var step = CONFIG.SCROLL.SPEED;
+      var interval = CONFIG.SCROLL.INTERVAL;
+      var atBottomPause = CONFIG.SCROLL.PAUSE_BOTTOM;
+      var atTopPause = CONFIG.SCROLL.PAUSE_TOP;
+      var direction = 1;
+      
+      function begin(){ 
+        state.scrollTimer = setInterval(tick, interval);
+      }
+      
+      function tick(){
+        var maxScroll = el.scrollHeight - el.clientHeight;
+        el.scrollTop = el.scrollTop + step * direction;
+        
+        if (el.scrollTop >= maxScroll){
+          el.scrollTop = maxScroll;
+          clearInterval(state.scrollTimer);
+          state.scrollTimer = null;
+          state.scrollPause = setTimeout(function(){ 
+            direction = -1; 
+            begin(); 
+          }, atBottomPause);
+        } else if (el.scrollTop <= 0){
+          el.scrollTop = 0;
+          clearInterval(state.scrollTimer);
+          state.scrollTimer = null;
+          state.scrollPause = setTimeout(function(){ 
+            direction = 1; 
+            begin(); 
+          }, atTopPause);
+        }
+      }
+      
+      state.scrollPause = setTimeout(begin, atTopPause);
+    }
+    
+    function stopAutoScroll(){ 
+      if (state.scrollTimer){ 
+        clearInterval(state.scrollTimer); 
+        state.scrollTimer = null; 
+      } 
+      if (state.scrollPause){ 
+        clearTimeout(state.scrollPause); 
+        state.scrollPause = null; 
+      } 
+    }
+    
+    // Add event listeners after DOM is ready
+    function setupEventListeners() {
+      var eventsContainer = document.getElementById('events');
+      if (eventsContainer) {
+        eventsContainer.addEventListener('mouseenter', function() {
+          state.userInteracting = true;
+          stopAutoScroll();
+        });
+        
+        eventsContainer.addEventListener('mouseleave', function() {
+          state.userInteracting = false;
+          setTimeout(function() {
+            if (!state.userInteracting) startAutoScroll();
+          }, 2000);
+        });
+        
+        eventsContainer.addEventListener('touchstart', function() {
+          state.userInteracting = true;
+          stopAutoScroll();
+        });
+        
+        eventsContainer.addEventListener('touchend', function() {
+          setTimeout(function() {
+            state.userInteracting = false;
+            if (!state.userInteracting) startAutoScroll();
+          }, 5000);
+        });
+      }
+    }
+    
+    // Main data handling
+    function maybeRender(data){
+      var sig = signatureFromData(data);
+      
+      // Store the payload for re-rendering
+      state.lastPayload = data;
+      
+      if (sig && sig === state.lastSignature){ 
+        updateLiveProgressBars(); 
+        return; 
+      }
+      
+      state.lastSignature = sig;
+      setCacheWithExpiry('last_payload_' + state.screenCode, data);
+      renderFromPayload(data);
+    }
+    
+    function checkAndLoadEvents(){
+      // Reset retry count at the start of each poll
+      state.retryCount = 0;
+      
+      xhrGetWithRetry(
+        buildApiUrl(), 
+        function(txt){
+          var data = null; 
+          try{ 
+            data = JSON.parse(txt); 
+          } catch(e){
+            console.log('JSON parse error:', e);
+          }
+          
+          // Check explicit registration status from API
+          if (!data || data.registered === false) {
+            // Not registered - show pairing screen
+            setRegistrationStatus(false);
+            show('code-screen'); 
+            hide('header'); 
+            hide('event-screen'); 
+            hide('empty-screen'); 
+            stopAutoScroll();
+            return;
+          }
+          
+          // Screen is registered - render data (events or empty)
+          maybeRender(data);
+        }, 
+        function(error){
+          console.log('API call failed:', error);
+          
+          // Use cached data if available
+          var cache = getCacheWithExpiry('last_payload_' + state.screenCode);
+          if (cache && cache.registered !== false) {
+            maybeRender(cache);
+            return;
+          }
+          
+          // If we were previously registered, show empty screen with last known data
+          if (getRegistrationStatus() && state.lastSuccessfulData) {
+            maybeRender({
+              registered: true,
+              rink_title: state.lastSuccessfulData.rink_title || '',
+              rink_logo: state.lastSuccessfulData.rink_logo || '',
+              ticker_text: state.lastSuccessfulData.ticker_text || '',
+              events: []
+            });
+            return;
+          }
+          
+          // No cache and not registered - show pairing screen
+          show('code-screen'); 
+          hide('header'); 
+          hide('event-screen'); 
+          hide('empty-screen'); 
+          stopAutoScroll();
+        }
+      );
+    }
+    
+    // Nightly refresh at 3 AM
+    function scheduleNightlyRefresh() {
+      var now = new Date();
+      var tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 3, 0, 0, 0);
+      var msUntilRefresh = tomorrow.getTime() - now.getTime();
+      
+      setTimeout(function() {
+        location.reload(true);
+      }, msUntilRefresh);
+    }
+    
+    // Cleanup on unload
+    window.addEventListener('beforeunload', function() {
+      stopAutoScroll();
+      if (state.pollHandle) clearInterval(state.pollHandle);
+      if (TICKER.animFrame) cancelAnimationFrame(TICKER.animFrame);
+    });
+    
+    // Check for events that should go live or expire
+    function checkEventStatus() {
+      if (!state.lastPayload || !state.lastPayload.events) return;
+      
+      var now = new Date();
+      var needsRerender = false;
+      
+      // Check each event in the stored data
+      var events = state.lastPayload.events || [];
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var times = getEventTimes(ev);
+        
+        if (!times.start || !times.end) continue;
+        
+        var startTime = times.start.getTime();
+        var endTime = times.end.getTime();
+        var nowTime = now.getTime();
+        
+        // Check if an event just expired or just went live
+        var wasLive = ev.__wasLive || false;
+        var isLiveNow = (nowTime >= startTime && nowTime < endTime);
+        var isExpired = (nowTime >= endTime);
+        
+        if (isExpired && !ev.__expired) {
+          needsRerender = true;
+          ev.__expired = true;
+        } else if (!wasLive && isLiveNow) {
+          needsRerender = true;
+          ev.__wasLive = true;
+        }
+      }
+      
+      if (needsRerender) {
+        renderFromPayload(state.lastPayload);
+      }
+    }
+    
+    // Initialize everything
+    detectPlatform();
+    state.screenCode = getOrCreateScreenCode();
+    state.isRegistered = getRegistrationStatus();
+    
+    var codeEl = document.getElementById('screen-code'); 
+    if (codeEl) codeEl.textContent = state.screenCode;
+    
+    updateClock(); 
+    setInterval(updateClock, 10000);
+    setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
+    
+    // Check event status every second for immediate updates
+    setInterval(checkEventStatus, 1000);
+    
+    // Setup event listeners after a short delay to ensure DOM is ready
+    setTimeout(setupEventListeners, 100);
+    
+    checkAndLoadEvents(); 
+    if (state.pollHandle) clearInterval(state.pollHandle);
+    state.pollHandle = setInterval(checkAndLoadEvents, CONFIG.POLL_INTERVAL);
+    
+    animationLoop(performance.now());
+    scheduleNightlyRefresh();
+  })();
+  </script>
+</body>
+</html>
