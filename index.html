@@ -9,6 +9,18 @@
     :root { 
       --header-gap: 2.5vh; 
       --header-pad-y: 2.2vh;
+      /* Default theme colors */
+      --theme-bg: #0a0a0a;
+      --theme-header-bg: rgba(0,0,0,0.3);
+      --theme-accent: #f77436;
+      --theme-event-text: #ffffff;
+      --theme-time-text: #dddddd;
+      --theme-room-text: #cccccc;
+      --theme-live-badge: #f77436;
+      --theme-live-bg: rgba(31,18,10,0.8);
+      --theme-progress: #f77436;
+      --theme-ticker-bg: rgba(11,11,11,0.95);
+      --theme-ticker-text: #dddddd;
     }
     
     /* GPU acceleration for smooth animations */
@@ -22,8 +34,8 @@
       padding: 0;
       width: 100vw;
       height: 100vh;
-      background: #0a0a0a;
-      color: #fff;
+      background: var(--theme-bg);
+      color: var(--theme-event-text);
       font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
       overflow: hidden;
       display: flex;
@@ -43,7 +55,7 @@
       align-items: center;
       gap: 2vw;
       border-bottom: 0.4vh solid rgba(255,255,255,0.1);
-      background: rgba(0,0,0,0.3);
+      background: var(--theme-header-bg);
       position: relative;
       z-index: 100;
       width: 100%;
@@ -80,13 +92,13 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      color: #ffffff;
+      color: var(--theme-event-text);
       line-height: 1.05;
     }
     
     #clock {
       font-size: 4.5vh;
-      color: #ddd;
+      color: var(--theme-time-text);
       white-space: nowrap;
       text-align: right;
       font-weight: 700;
@@ -105,14 +117,14 @@
       justify-content: center; 
       text-align: center; 
       gap: 3vh; 
-      background: rgba(247,116,54,0.05);
+      background: linear-gradient(135deg, var(--theme-accent) 0%, transparent 100%);
     }
     
     #code-screen h1 { 
       font-size: 7vh; 
       margin: 0; 
       font-weight: 300; 
-      color: #f77436;
+      color: var(--theme-accent);
     }
     
     #screen-code { 
@@ -123,7 +135,8 @@
       border-radius: 2vh; 
       letter-spacing: 1vh; 
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      border: 1px solid rgba(247, 116, 54, 0.3); 
+      border: 1px solid var(--theme-accent); 
+      color: var(--theme-event-text);
     }
     
     .platform-info { 
@@ -197,6 +210,10 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
     }
     
+    .event-row { 
+      color: var(--theme-event-text);
+    }
+    
     .event-row:nth-child(even) { 
       background: rgba(255,255,255,0.02); 
     }
@@ -209,14 +226,16 @@
     .event-cell.time { 
       text-align: center; 
       font-variant-numeric: tabular-nums; 
+      color: var(--theme-time-text);
     }
     
     .event-cell.room { 
       text-align: right; 
+      color: var(--theme-room-text);
     }
 
     .live { 
-      background: rgba(31,18,10,0.8);
+      background: var(--theme-live-bg);
       border-bottom-color: rgba(247,116,54,0.3); 
       font-weight: 700; 
     }
@@ -227,7 +246,7 @@
       font-size: 2.4vh; 
       line-height: 1; 
       padding: 0.8vh 1.4vh; 
-      background: #f77436;
+      background: var(--theme-live-badge);
       color: #1a0d08; 
       border-radius: 1.5vh; 
       vertical-align: middle; 
@@ -245,7 +264,7 @@
     
     .progress-fill { 
       height: 100%; 
-      background: #f77436;
+      background: var(--theme-progress);
       width: 0%; 
       -webkit-transition: width 1s ease-out;
       transition: width 1s ease-out; 
@@ -328,7 +347,7 @@
       overflow: hidden; 
       text-overflow: ellipsis; 
       display: none; 
-      color: #ffffff;
+      color: var(--theme-event-text);
     }
     
     #empty-status { 
@@ -339,7 +358,7 @@
     
     #empty-clock { 
       font-size: 3.6vh; 
-      color: #999; 
+      color: var(--theme-time-text); 
       margin-top: 1.5vh; 
       font-weight: 300; 
     }
@@ -350,7 +369,7 @@
       height: 6.5vh; 
       min-height: 44px; 
       border-top: 0.4vh solid rgba(255,255,255,0.1); 
-      background: rgba(11,11,11,0.95);
+      background: var(--theme-ticker-bg);
       overflow: hidden; 
       box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
     }
@@ -361,7 +380,7 @@
       will-change: transform; 
       line-height: 6.5vh; 
       font-size: 3vh; 
-      color: #ddd; 
+      color: var(--theme-ticker-text); 
       padding-left: 0; 
       -webkit-transform: translateX(0);
       transform: translateX(0); 
@@ -398,6 +417,28 @@
       padding: 0.5vh 1vw; 
       border-radius: 1vh; 
       z-index: 1000; 
+    }
+
+    /* Theme preview badge */
+    .theme-preview-badge {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: var(--theme-accent);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.9; }
+      50% { opacity: 1; }
+      100% { opacity: 0.9; }
     }
 
     @media (max-width: 1200px) { 
@@ -472,7 +513,8 @@
       scrollPause: null,
       pollHandle: null,
       isRegistered: false,
-      lastSuccessfulData: null
+      lastSuccessfulData: null,
+      currentTheme: null
     };
     
     // Supabase Realtime variables
@@ -563,7 +605,7 @@
           },
           function(payload) {
             console.log('Rink update received:', payload.eventType);
-            // Refresh if rink details change (logo, ticker, etc)
+            // Refresh if rink details change (logo, ticker, theme, etc)
             checkAndLoadEvents();
           }
         )
@@ -580,6 +622,119 @@
             console.log('Realtime subscription timed out');
           }
         });
+    }
+
+    // Theme application function
+    function applyTheme(theme) {
+      if (!theme) return;
+      
+      // Create or update a style element with CSS variables
+      var themeStyle = document.getElementById('custom-theme');
+      if (!themeStyle) {
+        themeStyle = document.createElement('style');
+        themeStyle.id = 'custom-theme';
+        document.head.appendChild(themeStyle);
+      }
+      
+      themeStyle.textContent = `
+        :root {
+          --theme-bg: ${theme.bg_color || '#0a0a0a'};
+          --theme-header-bg: ${theme.header_bg || 'rgba(0,0,0,0.3)'};
+          --theme-accent: ${theme.accent || '#f77436'};
+          --theme-event-text: ${theme.event_text || '#ffffff'};
+          --theme-time-text: ${theme.time_text || '#dddddd'};
+          --theme-room-text: ${theme.room_text || '#cccccc'};
+          --theme-live-badge: ${theme.live_badge || '#f77436'};
+          --theme-live-bg: ${theme.live_bg || 'rgba(31,18,10,0.8)'};
+          --theme-progress: ${theme.progress_bar || '#f77436'};
+          --theme-ticker-bg: ${theme.ticker_bg || 'rgba(11,11,11,0.95)'};
+          --theme-ticker-text: ${theme.ticker_text || '#dddddd'};
+        }
+      `;
+    }
+
+    // Load cached theme
+    function loadCachedTheme() {
+      var cachedTheme = getCacheWithExpiry('theme_' + state.screenCode);
+      if (cachedTheme) {
+        applyTheme(cachedTheme);
+      }
+    }
+
+    // Check if in preview mode
+    function isPreviewMode() {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('preview') === 'true';
+    }
+
+    // Apply preview theme from URL params
+    function applyPreviewTheme() {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('preview') !== 'true') return;
+      
+      var theme = {
+        bg_color: params.get('bg') || '#0a0a0a',
+        header_bg: params.get('header') || 'rgba(0,0,0,0.3)',
+        accent: params.get('accent') || '#f77436',
+        event_text: params.get('event') || '#ffffff',
+        time_text: params.get('time') || '#dddddd',
+        room_text: params.get('room') || '#cccccc',
+        live_badge: params.get('badge') || '#f77436',
+        live_bg: 'rgba(31,18,10,0.8)',
+        progress_bar: params.get('progress') || '#f77436',
+        ticker_bg: 'rgba(11,11,11,0.95)',
+        ticker_text: params.get('time') || '#dddddd'
+      };
+      
+      applyTheme(theme);
+      
+      // Add preview badge
+      var badge = document.createElement('div');
+      badge.className = 'theme-preview-badge';
+      badge.textContent = 'THEME PREVIEW';
+      document.body.appendChild(badge);
+      
+      // Show sample data in preview mode
+      var sampleData = {
+        registered: true,
+        rink_title: 'Preview Arena',
+        rink_logo: '',
+        ticker_text: 'This is a preview of your custom theme • Helmets required • Public skate 7 PM',
+        events: [
+          {
+            teams: 'Hawks vs Eagles',
+            room: 'Main Rink',
+            start_time: '09:00',
+            end_time: '10:30',
+            date: new Date().toISOString().split('T')[0]
+          },
+          {
+            teams: 'Junior Practice',
+            room: 'Practice Ice',
+            start_time: '10:45',
+            end_time: '11:45',
+            date: new Date().toISOString().split('T')[0]
+          },
+          {
+            teams: 'Figure Skating',
+            room: 'Main Rink',
+            start_time: '12:00',
+            end_time: '13:00',
+            date: new Date().toISOString().split('T')[0]
+          }
+        ],
+        theme: theme
+      };
+      
+      // Make one event "live" for preview
+      var now = new Date();
+      var currentHour = now.getHours();
+      if (currentHour >= 9 && currentHour < 18) {
+        sampleData.events[0].start_time = pad2(currentHour) + ':00';
+        sampleData.events[0].end_time = pad2(currentHour + 1) + ':30';
+      }
+      
+      renderFromPayload(sampleData);
     }
     
     // Polyfills for older browsers
@@ -1035,7 +1190,8 @@
           title: data && data.rink_title || '',
           logo: data && data.rink_logo || '',
           tick: (data && (data.announcement || data.ticker_text)) || '',
-          events: norm
+          events: norm,
+          theme: data && data.theme || null
         });
       } catch(e){ 
         return null; 
@@ -1330,12 +1486,19 @@
       }
     }
     
-    // Main data handling - Modified to handle realtime subscription
+    // Main data handling - Modified to handle realtime subscription and themes
     function maybeRender(data){
       var sig = signatureFromData(data);
       
       // Store the payload for re-rendering
       state.lastPayload = data;
+      
+      // Apply theme if provided
+      if (data && data.theme) {
+        applyTheme(data.theme);
+        state.currentTheme = data.theme;
+        setCacheWithExpiry('theme_' + state.screenCode, data.theme);
+      }
       
       // Subscribe to realtime if we have a rink_id and it's different
       if (data && data.rink_id && data.rink_id !== currentRinkId) {
@@ -1354,6 +1517,11 @@
     }
     
     function checkAndLoadEvents(){
+      // Skip API call in preview mode
+      if (isPreviewMode()) {
+        return;
+      }
+      
       // Reset retry count at the start of each poll
       state.retryCount = 0;
       
@@ -1399,7 +1567,8 @@
               rink_title: state.lastSuccessfulData.rink_title || '',
               rink_logo: state.lastSuccessfulData.rink_logo || '',
               ticker_text: state.lastSuccessfulData.ticker_text || '',
-              events: []
+              events: [],
+              theme: state.currentTheme
             });
             return;
           }
@@ -1481,25 +1650,34 @@
     // Initialize Supabase for realtime
     initSupabase();
     
-    var codeEl = document.getElementById('screen-code'); 
-    if (codeEl) codeEl.textContent = state.screenCode;
+    // Load cached theme
+    loadCachedTheme();
     
-    updateClock(); 
-    setInterval(updateClock, 10000);
-    setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
-    
-    // Check event status every second for immediate updates
-    setInterval(checkEventStatus, 1000);
-    
-    // Setup event listeners after a short delay to ensure DOM is ready
-    setTimeout(setupEventListeners, 100);
-    
-    checkAndLoadEvents(); 
-    if (state.pollHandle) clearInterval(state.pollHandle);
-    state.pollHandle = setInterval(checkAndLoadEvents, CONFIG.POLL_INTERVAL);
+    // Check if in preview mode and apply preview theme
+    if (isPreviewMode()) {
+      applyPreviewTheme();
+    } else {
+      var codeEl = document.getElementById('screen-code'); 
+      if (codeEl) codeEl.textContent = state.screenCode;
+      
+      updateClock(); 
+      setInterval(updateClock, 10000);
+      setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
+      
+      // Check event status every second for immediate updates
+      setInterval(checkEventStatus, 1000);
+      
+      // Setup event listeners after a short delay to ensure DOM is ready
+      setTimeout(setupEventListeners, 100);
+      
+      checkAndLoadEvents(); 
+      if (state.pollHandle) clearInterval(state.pollHandle);
+      state.pollHandle = setInterval(checkAndLoadEvents, CONFIG.POLL_INTERVAL);
+      
+      scheduleNightlyRefresh();
+    }
     
     animationLoop(performance.now());
-    scheduleNightlyRefresh();
   })();
   </script>
 </body>
