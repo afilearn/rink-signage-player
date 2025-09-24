@@ -863,27 +863,44 @@
     
     // Screen code generation
     function getOrCreateScreenCode(){
-      var q = parseQuery();
-      var code = q.code || getLocal('screen_uuid');
+  var q = parseQuery();
+  var code = q.code || getLocal('screen_uuid');
+  
+  if (!code){
+    // Generate truly random UUID v4
+    var crypto = window.crypto || window.msCrypto;
+    if (crypto && crypto.getRandomValues) {
+      // Cryptographically secure random
+      var arr = new Uint8Array(16);
+      crypto.getRandomValues(arr);
       
-      if (!code){
-        var fp = navigator.userAgent + navigator.language + screen.width + 
-                 screen.height + navigator.hardwareConcurrency;
-        var h = 0; 
-        for (var i = 0; i < fp.length; i++){ 
-          h = ((h << 5) - h) + fp.charCodeAt(i); 
-          h |= 0; 
+      // Convert to hex string
+      code = Array.from(arr, function(byte) {
+        return ('0' + byte.toString(16)).slice(-2);
+      }).join('').slice(0, 8).toUpperCase();
+    } else {
+      // Fallback with better randomness
+      var timestamp = Date.now();
+      var random = Math.random() * 0x100000000;
+      var combined = (timestamp + random).toString(16);
+      code = combined.slice(-8).toUpperCase();
+      
+      // Add extra entropy
+      var chars = '0123456789ABCDEF';
+      for (var i = 0; i < 8; i++) {
+        if (Math.random() < 0.3) {
+          var pos = Math.floor(Math.random() * 8);
+          code = code.substr(0, pos) + chars[Math.floor(Math.random() * 16)] + code.substr(pos + 1);
         }
-        code = Math.abs(h).toString(16).slice(0, 8).toUpperCase();
-        // Fix for padStart compatibility
-        while (code.length < 8) code = '0' + code;
       }
-      
-      code = String(code).replace(/\s+/g, '').toUpperCase();
-      setLocal('screen_uuid', code);
-      state.screenCode = code;
-      return code;
     }
+  }
+  
+  code = String(code).replace(/\s+/g, '').toUpperCase();
+  setLocal('screen_uuid', code);
+  state.screenCode = code;
+  return code;
+}
     
     // Network status management
     var networkStatus = document.getElementById('network-status');
