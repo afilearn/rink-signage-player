@@ -1178,8 +1178,8 @@
       // Only animate if ticker is visible and has text
       if (TICKER.text && track && holder && holder.style.display !== 'none'){ 
         TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
-        // Add gap buffer: wait for text to clear + extra 200px spacing
-        if (TICKER.x + TICKER.w + 200 < 0) TICKER.x = TICKER.holderW; 
+        // Add gap buffer: wait for text to clear + full screen width spacing
+        if (TICKER.x + TICKER.w + TICKER.holderW < 0) TICKER.x = TICKER.holderW; 
         track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
       } 
       
