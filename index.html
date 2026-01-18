@@ -1178,7 +1178,7 @@
       // Only animate if ticker is visible and has text
       if (TICKER.text && track && holder && holder.style.display !== 'none'){ 
         TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
-        if (TICKER.x + TICKER.w <= 0) TICKER.x = TICKER.holderW; 
+        if (TICKER.x < -TICKER.w) TICKER.x = TICKER.holderW; 
         track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
       } 
       
