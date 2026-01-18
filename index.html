@@ -653,6 +653,18 @@
       `;
     }
 
+    // Font scale application function
+    function applyFontScale(scale) {
+      if (!scale || scale === 1.0) {
+        // Reset to default
+        document.documentElement.style.fontSize = '';
+        return;
+      }
+      
+      // Apply scale as percentage (1.5 = 150%)
+      document.documentElement.style.fontSize = (scale * 100) + '%';
+    }
+
     // Load cached theme
     function loadCachedTheme() {
       var cachedTheme = getCacheWithExpiry('theme_' + state.screenCode);
@@ -1516,6 +1528,11 @@
         applyTheme(data.theme);
         state.currentTheme = data.theme;
         setCacheWithExpiry('theme_' + state.screenCode, data.theme);
+      }
+      
+      // Apply font scale if provided
+      if (data && data.font_scale) {
+        applyFontScale(data.font_scale);
       }
       
       // Subscribe to realtime if we have a rink_id and it's different
