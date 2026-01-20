@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
+      --font-scale: 1; /* Font scaling multiplier - set by JavaScript */
       --header-gap: 2.5vh; 
       --header-pad-y: 2.2vh;
       /* Default theme colors */
@@ -85,7 +86,7 @@
     #rink-title {
       flex: 1 1 auto;
       min-width: 0;
-      font-size: 4.6vh;
+      font-size: calc(4.6vh * var(--font-scale));
       font-weight: 700;
       letter-spacing: 0.25vh;
       text-transform: uppercase;
@@ -97,7 +98,7 @@
     }
     
     #clock {
-      font-size: 4.5vh;
+      font-size: calc(4.5vh * var(--font-scale));
       color: var(--theme-time-text);
       white-space: nowrap;
       text-align: right;
@@ -121,14 +122,14 @@
     }
     
     #code-screen h1 { 
-      font-size: 7vh; 
+      font-size: calc(7vh * var(--font-scale)); 
       margin: 0; 
       font-weight: 300; 
       color: var(--theme-accent);
     }
     
     #screen-code { 
-      font-size: 5vh; 
+      font-size: calc(5vh * var(--font-scale)); 
       font-weight: 600; 
       background: #1a1a1a;
       padding: 3vh 5vh; 
@@ -141,7 +142,7 @@
     
     .platform-info { 
       margin-top: 2vh; 
-      font-size: 2.5vh; 
+      font-size: calc(2.5vh * var(--font-scale)); 
       color: #aaa; 
     }
     
@@ -152,7 +153,7 @@
       left: 1vw;
       padding: 0.5vh 1vw;
       border-radius: 1vh;
-      font-size: 1.8vh;
+      font-size: calc(1.8vh * var(--font-scale));
       background: rgba(0,0,0,0.7);
       color: #aaa;
       z-index: 1000;
@@ -187,7 +188,7 @@
       width: 100%; 
       padding: 0 3vw 8vh; 
       box-sizing: border-box; 
-      font-size: 3.5vh; 
+      font-size: calc(3.5vh * var(--font-scale)); 
       overflow-y: auto; 
       -webkit-overflow-scrolling: touch;
     }
@@ -243,7 +244,7 @@
     .live .live-pill { 
       display: inline-block; 
       margin-left: 1vw; 
-      font-size: 2.4vh; 
+      font-size: calc(2.4vh * var(--font-scale)); 
       line-height: 1; 
       padding: 0.8vh 1.4vh; 
       background: var(--theme-live-badge);
@@ -339,7 +340,7 @@
     }
     
     #empty-title { 
-      font-size: 4.6vh; 
+      font-size: calc(4.6vh * var(--font-scale)); 
       font-weight: 600; 
       letter-spacing: 0.3vh; 
       text-transform: uppercase; 
@@ -351,13 +352,13 @@
     }
     
     #empty-status { 
-      font-size: 4vh; 
+      font-size: calc(4vh * var(--font-scale)); 
       color: #bbb; 
       font-weight: 300; 
     }
     
     #empty-clock { 
-      font-size: 3.6vh; 
+      font-size: calc(3.6vh * var(--font-scale)); 
       color: var(--theme-time-text); 
       margin-top: 1.5vh; 
       font-weight: 300; 
@@ -379,7 +380,7 @@
       white-space: nowrap; 
       will-change: transform; 
       line-height: 6.5vh; 
-      font-size: 3vh; 
+      font-size: calc(3vh * var(--font-scale)); 
       color: var(--theme-ticker-text); 
       padding-left: 0; 
       -webkit-transform: translateX(0);
@@ -411,7 +412,7 @@
       position: fixed; 
       bottom: 1vh; 
       right: 1vw; 
-      font-size: 2vh; 
+      font-size: calc(2vh * var(--font-scale)); 
       color: #666; 
       background: rgba(0,0,0,0.7); 
       padding: 0.5vh 1vw; 
@@ -442,15 +443,15 @@
     }
 
     @media (max-width: 1200px) { 
-      #rink-title { font-size: 4.2vh; } 
-      #clock { font-size: 3.4vh; } 
-      .event-only { font-size: 3vh; } 
+      #rink-title { font-size: calc(4.2vh * var(--font-scale)); } 
+      #clock { font-size: calc(3.4vh * var(--font-scale)); } 
+      .event-only { font-size: calc(3vh * var(--font-scale)); } 
     }
   </style>
 </head>
 <body>
   <div id="network-status" title="Network Status"></div>
-  <div id="realtime-status">●</div>
+  <div id="realtime-status">â—</div>
   <div id="platform-indicator">Detecting...</div>
   
   <div id="header" class="safe">
@@ -458,12 +459,12 @@
       <img id="header-logo" alt="Logo">
       <div id="rink-title">Rink</div>
     </div>
-    <div id="clock">—</div>
+    <div id="clock">â€”</div>
   </div>
   
   <div id="code-screen" class="safe">
     <h1>Let's get started</h1>
-    <div style="font-size: 3vh; opacity: 0.8;">Enter this code in your CMS to register this screen:</div>
+    <div style="font-size: calc(3vh * var(--font-scale)); opacity: 0.8;">Enter this code in your CMS to register this screen:</div>
     <div id="screen-code">--------</div>
     <div class="platform-info" id="platform-info">Detecting platform...</div>
   </div>
@@ -476,7 +477,7 @@
     <img id="empty-logo" alt="Logo">
     <div id="empty-title"></div>
     <div id="empty-status">No events scheduled today</div>
-    <div id="empty-clock">—</div>
+    <div id="empty-clock">â€”</div>
   </div>
   
   <div id="ticker"><div id="ticker-track"></div></div>
@@ -549,13 +550,13 @@
       indicator.className = status;
       switch(status) {
         case 'connected':
-          indicator.textContent = '● Live';
+          indicator.textContent = 'â— Live';
           break;
         case 'connecting':
-          indicator.textContent = '● Connecting...';
+          indicator.textContent = 'â— Connecting...';
           break;
         case 'disconnected':
-          indicator.textContent = '● Offline';
+          indicator.textContent = 'â— Offline';
           break;
       }
     }
@@ -657,12 +658,12 @@
     function applyFontScale(scale) {
       if (!scale || scale === 1.0) {
         // Reset to default
-        document.documentElement.style.fontSize = '';
+        document.documentElement.style.setProperty('--font-scale', '1');
         return;
       }
       
-      // Apply scale as percentage (1.5 = 150%)
-      document.documentElement.style.fontSize = (scale * 100) + '%';
+      // Set CSS variable for scaling vh-based fonts
+      document.documentElement.style.setProperty('--font-scale', scale);
     }
 
     // Load cached theme
@@ -711,7 +712,7 @@
         registered: true,
         rink_title: 'Preview Arena',
         rink_logo: '',
-        ticker_text: 'This is a preview of your custom theme • Helmets required • Public skate 7 PM',
+        ticker_text: 'This is a preview of your custom theme â€¢ Helmets required â€¢ Public skate 7 PM',
         events: [
           {
             teams: 'Hawks vs Eagles',
@@ -960,8 +961,8 @@
       var s = String(input || '').trim(); 
       if (!s) return '';
       
-      var rng = s.split(/\s*[-–—]\s*/); 
-      if (rng.length === 2) return to12h(rng[0]) + ' – ' + to12h(rng[1]);
+      var rng = s.split(/\s*[-â€“â€”]\s*/); 
+      if (rng.length === 2) return to12h(rng[0]) + ' â€“ ' + to12h(rng[1]);
       
       if (/^\d{4}-\d{2}-\d{2}T/.test(s)){ 
         var d = new Date(s); 
@@ -1007,7 +1008,7 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mins, 0, 0); 
       }
       
-      var parts = s.split(/\s*[-–—]\s*/); 
+      var parts = s.split(/\s*[-â€“â€”]\s*/); 
       if (parts.length === 2) return parseTimeToDate(parts[0]);
       
       return null;
@@ -1015,9 +1016,9 @@
     
     function getEventTimes(ev){
       var sRaw = ev && (ev.start_time || ev.startTime || ev.start || 
-                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[0]));
+                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[0]));
       var eRaw = ev && (ev.end_time || ev.endTime || ev.end || 
-                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[1]));
+                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[1]));
       
       var start = parseTimeToDate(sRaw);
       var end = parseTimeToDate(eRaw);
@@ -1048,10 +1049,10 @@
         var ap = h >= 12 ? 'PM' : 'AM'; 
         var hh = h % 12; 
         if (hh === 0) hh = 12; 
-        return dow + ', ' + mon + ' ' + day + ' · ' + hh + ':' + m + ' ' + ap; 
+        return dow + ', ' + mon + ' ' + day + ' Â· ' + hh + ':' + m + ' ' + ap; 
       } 
       
-      return dow + ', ' + mon + ' ' + day + ' · ' + pad2(h) + ':' + m; 
+      return dow + ', ' + mon + ' ' + day + ' Â· ' + pad2(h) + ':' + m; 
     }
     
     function updateClock(){ 
@@ -1363,7 +1364,7 @@
           if (startRaw || endRaw){ 
             var a = to12h(startRaw);
             var b = to12h(endRaw); 
-            timeStr = a && b ? (a + ' – ' + b) : (a || b); 
+            timeStr = a && b ? (a + ' â€“ ' + b) : (a || b); 
           } else if (ev2.time){ 
             timeStr = to12h(ev2.time); 
           }
