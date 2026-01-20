@@ -451,7 +451,7 @@
 </head>
 <body>
   <div id="network-status" title="Network Status"></div>
-  <div id="realtime-status">â—</div>
+  <div id="realtime-status">●</div>
   <div id="platform-indicator">Detecting...</div>
   
   <div id="header" class="safe">
@@ -548,15 +548,16 @@
       if (!indicator) return;
       
       indicator.className = status;
+      indicator.className = status;
       switch(status) {
         case 'connected':
-          indicator.textContent = 'â— Live';
+          indicator.textContent = '● Live';
           break;
         case 'connecting':
-          indicator.textContent = 'â— Connecting...';
+          indicator.textContent = '● Connecting...';
           break;
         case 'disconnected':
-          indicator.textContent = 'â— Offline';
+          indicator.textContent = '● Offline';
           break;
       }
     }
@@ -961,8 +962,8 @@
       var s = String(input || '').trim(); 
       if (!s) return '';
       
-      var rng = s.split(/\s*[-â€“â€”]\s*/); 
-      if (rng.length === 2) return to12h(rng[0]) + ' â€“ ' + to12h(rng[1]);
+      var rng = s.split(/\s*[-]\s*/); 
+      if (rng.length === 2) return to12h(rng[0]) + ' - ' + to12h(rng[1]);
       
       if (/^\d{4}-\d{2}-\d{2}T/.test(s)){ 
         var d = new Date(s); 
@@ -1049,10 +1050,10 @@
         var ap = h >= 12 ? 'PM' : 'AM'; 
         var hh = h % 12; 
         if (hh === 0) hh = 12; 
-        return dow + ', ' + mon + ' ' + day + ' Â· ' + hh + ':' + m + ' ' + ap; 
+        return dow + ', ' + mon + ' ' + day + ' · ' + hh + ':' + m + ' ' + ap; 
       } 
       
-      return dow + ', ' + mon + ' ' + day + ' Â· ' + pad2(h) + ':' + m; 
+      return dow + ', ' + mon + ' ' + day + ' · ' + pad2(h) + ':' + m; 
     }
     
     function updateClock(){ 
