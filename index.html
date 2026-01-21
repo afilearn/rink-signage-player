@@ -373,17 +373,18 @@
       background: var(--theme-ticker-bg);
       overflow: hidden; 
       box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
+      display: flex;           /* ← Add */
+      align-items: center;     /* ← Add */
     }
-    
+
     #ticker-track { 
       position: relative; 
       white-space: nowrap; 
       will-change: transform; 
-      line-height: 6.5vh; 
-      font-size: calc(4vh * var(--font-scale)); 
+      line-height: 1.2;        /* ← Change from 6.5vh to 1.2 */
+      font-size: calc(4.5vh * var(--font-scale)); 
       color: var(--theme-ticker-text); 
-      padding-left: 0;
-      padding-top: 0.5vh;
+      padding-left: 0; 
       -webkit-transform: translateX(0);
       transform: translateX(0); 
       font-weight: 400; 
