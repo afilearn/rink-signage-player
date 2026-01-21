@@ -365,23 +365,24 @@
     }
 
     /* Ticker */
+    /* Ticker */
     #ticker { 
-      display: none; 
-      height: 8vh;           /* ← Changed from 6.5vh */
-      min-height: 50px;      /* ← Changed from 44px */
+      height: 8vh;
+      min-height: 60px;      /* Increased from 50px */
       border-top: 0.4vh solid rgba(255,255,255,0.1); 
       background: var(--theme-ticker-bg);
       overflow: hidden; 
       box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
       display: flex;
       align-items: center;
+      padding: 1vh 0;        /* Add vertical padding */
     }
     
     #ticker-track { 
       position: relative; 
       white-space: nowrap; 
       will-change: transform; 
-      line-height: 1.3;      /* ← Keep at 1.3 */
+      line-height: 1.5;      /* Increased from 1.3 */
       font-size: calc(4vh * var(--font-scale)); 
       color: var(--theme-ticker-text); 
       padding-left: 0; 
