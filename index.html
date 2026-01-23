@@ -1786,10 +1786,13 @@
     
     // Initialize everything
     
-    // Start health monitoring
-    startWatchdog();
-    startHeartbeat();
-    setupVisibilityTracking();
+    // Start health monitoring ONLY if not in preview mode
+    // (prevents preview window from interfering with actual screen status)
+    if (!isPreviewMode()) {
+      startWatchdog();
+      startHeartbeat();
+      setupVisibilityTracking();
+    }
     
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
