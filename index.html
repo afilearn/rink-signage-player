@@ -1568,6 +1568,11 @@
       
       state.retryCount = 0;
       
+      console.log('=== API CHECK ===');
+      console.log('Current screen code:', state.screenCode);
+      console.log('Stored in localStorage:', getLocal('screen_uuid'));
+      console.log('API URL:', buildApiUrl());
+      
       xhrGetWithRetry(
         buildApiUrl(), 
         function(txt){
@@ -1578,7 +1583,13 @@
             console.log('JSON parse error:', e);
           }
           
+          console.log('=== API RESPONSE ===');
+          console.log('Registered:', data && data.registered);
+          console.log('Events count:', data && data.events ? data.events.length : 0);
+          console.log('Rink title:', data && data.rink_title);
+          
           if (!data || data.registered === false) {
+            console.log('>>> SHOWING CODE SCREEN (not registered)');
             setRegistrationStatus(false);
             show('code-screen'); 
             hide('header'); 
@@ -1588,23 +1599,7 @@
             return;
           }
           
-          // NEW: If screen is already registered but user visits without ?code=, show registration screen
-          var urlParams = parseQuery();
-          if (data && data.registered === true && !urlParams.code) {
-            // Generate fresh code for new screen
-            localStorage.removeItem('screen_uuid');
-            state.screenCode = getOrCreateScreenCode();
-            var codeEl = document.getElementById('screen-code');
-            if (codeEl) codeEl.textContent = state.screenCode;
-            
-            show('code-screen');
-            hide('header');
-            hide('event-screen');
-            hide('empty-screen');
-            stopAutoScroll();
-            return;
-          }
-          
+          console.log('>>> RENDERING EVENTS (registered)');
           maybeRender(data);
         }, 
         function(error){
@@ -1694,6 +1689,11 @@
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
     state.isRegistered = getRegistrationStatus();
+    
+    console.log('==== INITIALIZATION ====');
+    console.log('Screen code set to:', state.screenCode);
+    console.log('Stored in localStorage:', getLocal('screen_uuid'));
+    console.log('Registration status:', state.isRegistered);
     
     initSupabase();
     
