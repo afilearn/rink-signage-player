@@ -7,10 +7,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root { 
-      --font-scale: 1; /* Font scaling multiplier - set by JavaScript */
+      --font-scale: 1;
       --header-gap: 2.5vh; 
       --header-pad-y: 2.2vh;
-      /* Default theme colors */
       --theme-bg: #0a0a0a;
       --theme-header-bg: rgba(0,0,0,0.3);
       --theme-accent: #f77436;
@@ -24,7 +23,6 @@
       --theme-ticker-text: #dddddd;
     }
     
-    /* GPU acceleration for smooth animations */
     * {
       -webkit-transform: translateZ(0);
       -webkit-backface-visibility: hidden;
@@ -49,7 +47,6 @@
       width: 100%; 
     }
     
-    /* Header */
     #header {
       display: none;
       grid-template-columns: 1fr auto;
@@ -109,7 +106,6 @@
       min-width: max-content;
     }
 
-    /* Pairing screen */
     #code-screen { 
       flex: 1; 
       display: flex; 
@@ -146,7 +142,6 @@
       color: #aaa; 
     }
     
-    /* Realtime status indicator */
     #realtime-status {
       position: fixed;
       top: 1vh;
@@ -175,7 +170,6 @@
       display: block;
     }
 
-    /* Events area */
     #event-screen { 
       display: none; 
       flex-direction: column; 
@@ -272,7 +266,6 @@
       box-shadow: 0 0 10px rgba(247,116,54,0.5); 
     }
     
-    /* Animation for removing expired events */
     @keyframes fadeOutSlide {
       0% { 
         opacity: 1; 
@@ -292,7 +285,6 @@
       }
     }
     
-    /* Animation for new live events */
     @keyframes pulseIn {
       0% { 
         transform: scale(0.98);
@@ -315,7 +307,6 @@
       animation: fadeOutSlide 0.5s ease-out forwards;
     }
 
-    /* Empty state */
     #empty-screen { 
       display: none; 
       flex: 1; 
@@ -364,25 +355,23 @@
       font-weight: 300; 
     }
 
-    /* Ticker */
-    /* Ticker */
     #ticker { 
       height: 8vh;
-      min-height: 60px;      /* Increased from 50px */
+      min-height: 60px;
       border-top: 0.4vh solid rgba(255,255,255,0.1); 
       background: var(--theme-ticker-bg);
       overflow: hidden; 
       box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
       display: flex;
       align-items: center;
-      padding: 1vh 0;        /* Add vertical padding */
+      padding: 1vh 0;
     }
     
     #ticker-track { 
       position: relative; 
       white-space: nowrap; 
       will-change: transform; 
-      line-height: 1.5;      /* Increased from 1.3 */
+      line-height: 1.5;
       font-size: calc(4vh * var(--font-scale)); 
       color: var(--theme-ticker-text); 
       padding-left: 0; 
@@ -391,7 +380,6 @@
       font-weight: 400; 
     }
 
-    /* Status badges */
     #network-status { 
       position: fixed; 
       top: 1vh; 
@@ -423,7 +411,6 @@
       z-index: 1000; 
     }
 
-    /* Theme preview badge */
     .theme-preview-badge {
       position: fixed;
       top: 10px;
@@ -462,7 +449,7 @@
       <img id="header-logo" alt="Logo">
       <div id="rink-title">Rink</div>
     </div>
-    <div id="clock">â€”</div>
+    <div id="clock">—</div>
   </div>
   
   <div id="code-screen" class="safe">
@@ -480,24 +467,20 @@
     <img id="empty-logo" alt="Logo">
     <div id="empty-title"></div>
     <div id="empty-status">No events scheduled today</div>
-    <div id="empty-clock">â€”</div>
+    <div id="empty-clock">—</div>
   </div>
   
   <div id="ticker"><div id="ticker-track"></div></div>
 
   <script>
   (function(){
-    // Configuration
     var CONFIG = {
-      POLL_INTERVAL: 60000, // Reduced to 60 seconds since we have realtime
-      HEARTBEAT_INTERVAL: 30000, // Send heartbeat every 30 seconds
-      WATCHDOG_INTERVAL: 1000, // Check for freeze every 1 second
-      FREEZE_THRESHOLD: 5000, // Consider frozen if no tick for 5 seconds
+      POLL_INTERVAL: 60000,
       PROGRESS_UPDATE_INTERVAL: 2000,
       DEFAULT_EVENT_DURATION: 90,
       FORCE_12H_CLOCK: true,
       API_TIMEOUT: 8000,
-      CACHE_TTL: 86400000, // 24 hours
+      CACHE_TTL: 86400000,
       RETRY_DELAYS: [1000, 2000, 4000, 8000],
       SCROLL: {
         SPEED: 1,
@@ -508,7 +491,6 @@
       TICKER_SPEED: 100
     };
     
-    // State management
     var state = {
       screenCode: '',
       lastPayload: null,
@@ -524,111 +506,10 @@
       currentTheme: null
     };
     
-    // Heartbeat & Watchdog System
-    var HEALTH = {
-      lastTick: Date.now(),
-      heartbeatHandle: null,
-      watchdogHandle: null,
-      isVisible: true,
-      freezeCount: 0
-    };
-    
-    // Watchdog: detect if page is frozen
-    function startWatchdog() {
-      if (HEALTH.watchdogHandle) return;
-      
-      // Update tick every second
-      setInterval(function() {
-        HEALTH.lastTick = Date.now();
-      }, CONFIG.WATCHDOG_INTERVAL);
-      
-      // Check for freezes
-      HEALTH.watchdogHandle = setInterval(function() {
-        var timeSinceLastTick = Date.now() - HEALTH.lastTick;
-        
-        if (timeSinceLastTick > CONFIG.FREEZE_THRESHOLD) {
-          HEALTH.freezeCount++;
-          console.warn('Page appears frozen:', timeSinceLastTick, 'ms');
-          sendHealthBeacon('frozen');
-        }
-      }, CONFIG.FREEZE_THRESHOLD + 1000);
-    }
-    
-    // Heartbeat: prove browser is alive and running
-    function startHeartbeat() {
-      if (HEALTH.heartbeatHandle) return;
-      
-      HEALTH.heartbeatHandle = setInterval(function() {
-        sendHealthBeacon('heartbeat');
-      }, CONFIG.HEARTBEAT_INTERVAL);
-      
-      // Send immediate heartbeat on start
-      sendHealthBeacon('heartbeat');
-    }
-    
-    // Send health signal using beacon (survives page unload) - WITH CORS FIX
-    function sendHealthBeacon(eventType) {
-      if (!state.screenCode) return;
-      
-      var payload = {
-        screen_code: state.screenCode,
-        event_type: eventType,
-        timestamp: new Date().toISOString(),
-        visibility: document.visibilityState || 'visible',
-        freeze_count: HEALTH.freezeCount,
-        user_agent: navigator.userAgent.substring(0, 100)
-      };
-      
-      var url = buildApiUrl() + '&health=1';
-      
-      // Try fetch first (with proper CORS), fallback to sendBeacon
-      if (window.fetch) {
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          credentials: 'omit'  // Critical for CORS with wildcard origin
-        }).catch(function(e) {
-          console.log('Health beacon fetch failed:', e);
-          // Fallback to sendBeacon
-          if (navigator.sendBeacon) {
-            var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-            navigator.sendBeacon(url, blob);
-          }
-        });
-      } else if (navigator.sendBeacon) {
-        // Fallback for older browsers
-        var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-        navigator.sendBeacon(url, blob);
-      }
-    }
-    
-    // Visibility change detection
-    function setupVisibilityTracking() {
-      if (typeof document.visibilityState === 'undefined') return;
-      
-      document.addEventListener('visibilitychange', function() {
-        HEALTH.isVisible = document.visibilityState === 'visible';
-        sendHealthBeacon(HEALTH.isVisible ? 'visible' : 'hidden');
-      });
-      
-      // Page lifecycle events
-      window.addEventListener('pagehide', function() {
-        sendHealthBeacon('pagehide');
-      });
-      
-      window.addEventListener('pageshow', function() {
-        sendHealthBeacon('pageshow');
-      });
-    }
-    
-    // Supabase Realtime variables
     var supabaseClient = null;
     var realtimeChannel = null;
     var currentRinkId = null;
     
-    // Initialize Supabase
     function initSupabase() {
       if (typeof window.supabase === 'undefined') {
         console.log('Supabase library not loaded, realtime disabled');
@@ -647,34 +528,30 @@
       }
     }
     
-    // Update realtime status indicator
     function updateRealtimeStatus(status) {
       var indicator = document.getElementById('realtime-status');
       if (!indicator) return;
       
       indicator.className = status;
-      indicator.className = status;
       switch(status) {
         case 'connected':
-          indicator.textContent = '● Live';
+          indicator.textContent = 'Live';
           break;
         case 'connecting':
-          indicator.textContent = '● Connecting...';
+          indicator.textContent = 'Connecting...';
           break;
         case 'disconnected':
-          indicator.textContent = '● Offline';
+          indicator.textContent = 'Offline';
           break;
       }
     }
     
-    // Subscribe to realtime updates for a specific rink
     function subscribeToRealtime(rinkId) {
       if (!supabaseClient || !rinkId) {
         console.log('Cannot subscribe: missing supabaseClient or rinkId');
         return;
       }
       
-      // Clean up existing subscription
       if (realtimeChannel) {
         console.log('Removing existing channel subscription');
         supabaseClient.removeChannel(realtimeChannel);
@@ -685,7 +562,6 @@
       console.log('Subscribing to realtime updates for rink:', rinkId);
       updateRealtimeStatus('connecting');
       
-      // Create new subscription
       realtimeChannel = supabaseClient
         .channel('rink-updates-' + rinkId)
         .on(
@@ -698,7 +574,6 @@
           },
           function(payload) {
             console.log('Booking update received:', payload.eventType);
-            // Immediately fetch fresh data when bookings change
             checkAndLoadEvents();
           }
         )
@@ -712,7 +587,6 @@
           },
           function(payload) {
             console.log('Rink update received:', payload.eventType);
-            // Refresh if rink details change (logo, ticker, theme, etc)
             checkAndLoadEvents();
           }
         )
@@ -731,11 +605,9 @@
         });
     }
 
-    // Theme application function
     function applyTheme(theme) {
       if (!theme) return;
       
-      // Create or update a style element with CSS variables
       var themeStyle = document.getElementById('custom-theme');
       if (!themeStyle) {
         themeStyle = document.createElement('style');
@@ -760,19 +632,15 @@
       `;
     }
 
-    // Font scale application function
     function applyFontScale(scale) {
       if (!scale || scale === 1.0) {
-        // Reset to default
         document.documentElement.style.setProperty('--font-scale', '1');
         return;
       }
       
-      // Set CSS variable for scaling vh-based fonts
       document.documentElement.style.setProperty('--font-scale', scale);
     }
 
-    // Load cached theme
     function loadCachedTheme() {
       var cachedTheme = getCacheWithExpiry('theme_' + state.screenCode);
       if (cachedTheme) {
@@ -780,13 +648,11 @@
       }
     }
 
-    // Check if in preview mode
     function isPreviewMode() {
       var params = new URLSearchParams(window.location.search);
       return params.get('preview') === 'true';
     }
 
-    // Apply preview theme from URL params
     function applyPreviewTheme() {
       var params = new URLSearchParams(window.location.search);
       if (params.get('preview') !== 'true') return;
@@ -807,18 +673,16 @@
       
       applyTheme(theme);
       
-      // Add preview badge
       var badge = document.createElement('div');
       badge.className = 'theme-preview-badge';
       badge.textContent = 'THEME PREVIEW';
       document.body.appendChild(badge);
       
-      // Show sample data in preview mode
       var sampleData = {
         registered: true,
         rink_title: 'Preview Arena',
         rink_logo: '',
-        ticker_text: 'This is a preview of your custom theme â€¢ Helmets required â€¢ Public skate 7 PM',
+        ticker_text: 'This is a preview of your custom theme • Helmets required • Public skate 7 PM',
         events: [
           {
             teams: 'Hawks vs Eagles',
@@ -845,7 +709,6 @@
         theme: theme
       };
       
-      // Make one event "live" for preview
       var now = new Date();
       var currentHour = now.getHours();
       if (currentHour >= 9 && currentHour < 18) {
@@ -856,14 +719,12 @@
       renderFromPayload(sampleData);
     }
     
-    // Polyfills for older browsers
     if (!window.requestAnimationFrame) {
       window.requestAnimationFrame = window.webkitRequestAnimationFrame || 
                                      window.mozRequestAnimationFrame || 
                                      function(cb){ setTimeout(cb, 1000/60); };
     }
     
-    // Utility functions
     function parseQuery(){ 
       var out = {}; 
       try{ 
@@ -957,7 +818,6 @@
       if (el) el.style.display = 'none'; 
     }
     
-    // Platform detection
     function detectPlatform() {
       var ua = navigator.userAgent.toLowerCase();
       var platform = '';
@@ -980,48 +840,41 @@
       if (el2) el2.textContent = platform;
     }
     
-    // Screen code generation
     function getOrCreateScreenCode(){
-  var q = parseQuery();
-  var code = q.code || getLocal('screen_uuid');
-  
-  if (!code){
-    // Generate truly random UUID v4
-    var crypto = window.crypto || window.msCrypto;
-    if (crypto && crypto.getRandomValues) {
-      // Cryptographically secure random
-      var arr = new Uint8Array(16);
-      crypto.getRandomValues(arr);
+      var q = parseQuery();
+      var code = q.code || getLocal('screen_uuid');
       
-      // Convert to hex string
-      code = Array.from(arr, function(byte) {
-        return ('0' + byte.toString(16)).slice(-2);
-      }).join('').slice(0, 8).toUpperCase();
-    } else {
-      // Fallback with better randomness
-      var timestamp = Date.now();
-      var random = Math.random() * 0x100000000;
-      var combined = (timestamp + random).toString(16);
-      code = combined.slice(-8).toUpperCase();
-      
-      // Add extra entropy
-      var chars = '0123456789ABCDEF';
-      for (var i = 0; i < 8; i++) {
-        if (Math.random() < 0.3) {
-          var pos = Math.floor(Math.random() * 8);
-          code = code.substr(0, pos) + chars[Math.floor(Math.random() * 16)] + code.substr(pos + 1);
+      if (!code){
+        var crypto = window.crypto || window.msCrypto;
+        if (crypto && crypto.getRandomValues) {
+          var arr = new Uint8Array(16);
+          crypto.getRandomValues(arr);
+          
+          code = Array.from(arr, function(byte) {
+            return ('0' + byte.toString(16)).slice(-2);
+          }).join('').slice(0, 8).toUpperCase();
+        } else {
+          var timestamp = Date.now();
+          var random = Math.random() * 0x100000000;
+          var combined = (timestamp + random).toString(16);
+          code = combined.slice(-8).toUpperCase();
+          
+          var chars = '0123456789ABCDEF';
+          for (var i = 0; i < 8; i++) {
+            if (Math.random() < 0.3) {
+              var pos = Math.floor(Math.random() * 8);
+              code = code.substr(0, pos) + chars[Math.floor(Math.random() * 16)] + code.substr(pos + 1);
+            }
+          }
         }
       }
+      
+      code = String(code).replace(/\s+/g, '').toUpperCase();
+      setLocal('screen_uuid', code);
+      state.screenCode = code;
+      return code;
     }
-  }
-  
-  code = String(code).replace(/\s+/g, '').toUpperCase();
-  setLocal('screen_uuid', code);
-  state.screenCode = code;
-  return code;
-}
     
-    // Network status management
     var networkStatus = document.getElementById('network-status');
     var net = {failures: 0, lastSuccess: Date.now(), responseTime: 0};
     
@@ -1055,7 +908,6 @@
       }
     }
     
-    // Time formatting functions remain the same
     function format12(h, m){ 
       var ap = h >= 12 ? 'PM' : 'AM'; 
       h = h % 12; 
@@ -1114,7 +966,7 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mins, 0, 0); 
       }
       
-      var parts = s.split(/\s*[-â€“â€”]\s*/); 
+      var parts = s.split(/\s*[-–—]\s*/); 
       if (parts.length === 2) return parseTimeToDate(parts[0]);
       
       return null;
@@ -1122,9 +974,9 @@
     
     function getEventTimes(ev){
       var sRaw = ev && (ev.start_time || ev.startTime || ev.start || 
-                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[0]));
+                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[0]));
       var eRaw = ev && (ev.end_time || ev.endTime || ev.end || 
-                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[1]));
+                 (ev.time && String(ev.time).split(/\s*[-–—]\s*/)[1]));
       
       var start = parseTimeToDate(sRaw);
       var end = parseTimeToDate(eRaw);
@@ -1140,7 +992,6 @@
       return {start: start, end: end};
     }
     
-    // Clock
     var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     
@@ -1170,7 +1021,6 @@
       if (el2) el2.textContent = s; 
     }
     
-    // API communication with retry
     function buildApiUrl(){ 
       return 'https://post-signage-api.abdullaafraz.workers.dev?id=' + 
              encodeURIComponent(state.screenCode); 
@@ -1225,7 +1075,6 @@
       attempt();
     }
 
-    // Ticker management
     var TICKER = {text: '', x: 0, w: 0, holderW: 0, emptyStreak: 0, lastTime: 0, animFrame: null};
     
     function normalizeText(t){ 
@@ -1285,7 +1134,6 @@
       applyTicker(); 
     }
     
-    // Optimized animation loop
     function animationLoop(ts){ 
       if (!TICKER.lastTime) TICKER.lastTime = ts; 
       var dt = ts - TICKER.lastTime; 
@@ -1294,10 +1142,8 @@
       var track = document.getElementById('ticker-track'); 
       var holder = document.getElementById('ticker');
       
-      // Only animate if ticker is visible and has text
       if (TICKER.text && track && holder && holder.style.display !== 'none'){ 
         TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
-        // Add gap buffer: wait for text to clear + full screen width spacing
         if (TICKER.x + TICKER.w + TICKER.holderW < 0) TICKER.x = TICKER.holderW; 
         track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
       } 
@@ -1305,10 +1151,8 @@
       TICKER.animFrame = requestAnimationFrame(animationLoop); 
     }
     
-    // Window resize handler
     window.addEventListener('resize', measureTicker);
 
-    // Data signature for change detection
     function signatureFromData(data){
       try{
         var raw = Array.isArray(data && data.events) ? data.events : [];
@@ -1335,7 +1179,6 @@
       }
     }
     
-    // Progress bar updates and expired event removal
     function updateLiveProgressBars(){
       var bars = document.querySelectorAll('.progress[data-start] .progress-fill'); 
       var now = Date.now();
@@ -1352,14 +1195,12 @@
           if (pct < 0) pct = 0; 
           if (pct > 100) {
             pct = 100;
-            // Event has ended, mark for refresh
             needsRefresh = true;
           }
           bar.style.width = pct + '%'; 
         } 
       }
       
-      // Check all events for expiration
       var eventRows = document.querySelectorAll('.event-row[data-end-time]');
       for (var j = 0; j < eventRows.length; j++) {
         var row = eventRows[j];
@@ -1370,13 +1211,11 @@
         }
       }
       
-      // If any event expired, re-render immediately
       if (needsRefresh && state.lastPayload) {
         renderFromPayload(state.lastPayload);
       }
     }
 
-    // Render events
     function renderFromPayload(data){
       var raw = (data && data.events) || [];
       var now = new Date();
@@ -1384,7 +1223,6 @@
       var logo = (data && data.rink_logo) || '';
       var ticker = (data && (data.announcement || data.ticker_text)) || '';
       
-      // Track that we have valid data
       if (data && data.registered) {
         setRegistrationStatus(true);
         state.lastSuccessfulData = data;
@@ -1408,12 +1246,10 @@
         return a.__start - b.__start; 
       });
       
-      // Limit to 50 events max to prevent performance issues
       if (events.length > 50) {
         events = events.slice(0, 50);
       }
       
-      // Update header
       var titleEl = document.getElementById('rink-title');
       var headerLogo = document.getElementById('header-logo');
       if (titleEl) titleEl.textContent = title || 'Rink';
@@ -1430,7 +1266,6 @@
         } 
       }
       
-      // Update empty screen
       var emptyLogo = document.getElementById('empty-logo');
       var emptyTitle = document.getElementById('empty-title');
       if (emptyTitle) {
@@ -1523,7 +1358,6 @@
         show('event-screen'); 
         hide('empty-screen');
       } else {
-        // No events, but registered - show empty screen
         hide('code-screen'); 
         show('header'); 
         hide('event-screen'); 
@@ -1532,7 +1366,6 @@
       }
     }
     
-    // Auto-scroll with user interaction detection
     function startAutoScroll(){
       var el = document.getElementById('events');
       if (!el) return;
@@ -1593,7 +1426,6 @@
       } 
     }
     
-    // Add event listeners after DOM is ready
     function setupEventListeners() {
       var eventsContainer = document.getElementById('events');
       if (eventsContainer) {
@@ -1623,26 +1455,21 @@
       }
     }
     
-    // Main data handling - Modified to handle realtime subscription and themes
     function maybeRender(data){
       var sig = signatureFromData(data);
       
-      // Store the payload for re-rendering
       state.lastPayload = data;
       
-      // Apply theme if provided
       if (data && data.theme) {
         applyTheme(data.theme);
         state.currentTheme = data.theme;
         setCacheWithExpiry('theme_' + state.screenCode, data.theme);
       }
       
-      // Apply font scale if provided
       if (data && data.font_scale) {
         applyFontScale(data.font_scale);
       }
       
-      // Subscribe to realtime if we have a rink_id and it's different
       if (data && data.rink_id && data.rink_id !== currentRinkId) {
         console.log('Rink ID changed, subscribing to realtime:', data.rink_id);
         subscribeToRealtime(data.rink_id);
@@ -1659,12 +1486,10 @@
     }
     
     function checkAndLoadEvents(){
-      // Skip API call in preview mode
       if (isPreviewMode()) {
         return;
       }
       
-      // Reset retry count at the start of each poll
       state.retryCount = 0;
       
       xhrGetWithRetry(
@@ -1677,9 +1502,7 @@
             console.log('JSON parse error:', e);
           }
           
-          // Check explicit registration status from API
           if (!data || data.registered === false) {
-            // Not registered - show pairing screen
             setRegistrationStatus(false);
             show('code-screen'); 
             hide('header'); 
@@ -1689,20 +1512,17 @@
             return;
           }
           
-          // Screen is registered - render data (events or empty)
           maybeRender(data);
         }, 
         function(error){
           console.log('API call failed:', error);
           
-          // Use cached data if available
           var cache = getCacheWithExpiry('last_payload_' + state.screenCode);
           if (cache && cache.registered !== false) {
             maybeRender(cache);
             return;
           }
           
-          // If we were previously registered, show empty screen with last known data
           if (getRegistrationStatus() && state.lastSuccessfulData) {
             maybeRender({
               registered: true,
@@ -1715,7 +1535,6 @@
             return;
           }
           
-          // No cache and not registered - show pairing screen
           show('code-screen'); 
           hide('header'); 
           hide('event-screen'); 
@@ -1725,7 +1544,6 @@
       );
     }
     
-    // Nightly refresh at 3 AM
     function scheduleNightlyRefresh() {
       var now = new Date();
       var tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 3, 0, 0, 0);
@@ -1736,7 +1554,6 @@
       }, msUntilRefresh);
     }
     
-    // Cleanup on unload
     window.addEventListener('beforeunload', function() {
       stopAutoScroll();
       if (state.pollHandle) clearInterval(state.pollHandle);
@@ -1746,14 +1563,12 @@
       }
     });
     
-    // Check for events that should go live or expire
     function checkEventStatus() {
       if (!state.lastPayload || !state.lastPayload.events) return;
       
       var now = new Date();
       var needsRerender = false;
       
-      // Check each event in the stored data
       var events = state.lastPayload.events || [];
       for (var i = 0; i < events.length; i++) {
         var ev = events[i];
@@ -1765,7 +1580,6 @@
         var endTime = times.end.getTime();
         var nowTime = now.getTime();
         
-        // Check if an event just expired or just went live
         var wasLive = ev.__wasLive || false;
         var isLiveNow = (nowTime >= startTime && nowTime < endTime);
         var isExpired = (nowTime >= endTime);
@@ -1784,27 +1598,14 @@
       }
     }
     
-    // Initialize everything
-    
-    // Start health monitoring ONLY if not in preview mode
-    // (prevents preview window from interfering with actual screen status)
-    if (!isPreviewMode()) {
-      startWatchdog();
-      startHeartbeat();
-      setupVisibilityTracking();
-    }
-    
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
     state.isRegistered = getRegistrationStatus();
     
-    // Initialize Supabase for realtime
     initSupabase();
     
-    // Load cached theme
     loadCachedTheme();
     
-    // Check if in preview mode and apply preview theme
     if (isPreviewMode()) {
       applyPreviewTheme();
     } else {
@@ -1815,10 +1616,8 @@
       setInterval(updateClock, 10000);
       setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
       
-      // Check event status every second for immediate updates
       setInterval(checkEventStatus, 1000);
       
-      // Setup event listeners after a short delay to ensure DOM is ready
       setTimeout(setupEventListeners, 100);
       
       checkAndLoadEvents(); 
