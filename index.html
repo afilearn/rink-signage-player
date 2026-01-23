@@ -1736,22 +1736,41 @@
       if (codeEl) codeEl.textContent = state.screenCode;
       
       // Simple heartbeat - only on actual screens (not preview)
+      // Simple heartbeat - TV-compatible (uses XMLHttpRequest)
       function sendHeartbeat() {
         if (!state.screenCode) return;
         
-        fetch(buildApiUrl() + '&health=1', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        try {
+          var xhr = new XMLHttpRequest();
+          var url = buildApiUrl() + '&health=1';
+          var payload = JSON.stringify({
             screen_code: state.screenCode,
             timestamp: new Date().toISOString(),
             event_type: 'heartbeat'
-          }),
-          keepalive: true,
-          credentials: 'omit'
-        }).catch(function() {
-          // Silent fail - not critical
-        });
+          });
+          
+          xhr.open('POST', url, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.timeout = 5000; // 5 second timeout
+          
+          xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              console.log('✓ Heartbeat sent successfully');
+            }
+          };
+          
+          xhr.onerror = function() {
+            console.log('✗ Heartbeat failed (network error)');
+          };
+          
+          xhr.ontimeout = function() {
+            console.log('✗ Heartbeat timeout');
+          };
+          
+          xhr.send(payload);
+        } catch(e) {
+          console.log('✗ Heartbeat error:', e);
+        }
       }
       
       // Send heartbeat every 30 seconds
