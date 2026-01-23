@@ -454,7 +454,7 @@
 </head>
 <body>
   <div id="network-status" title="Network Status"></div>
-  <div id="realtime-status">●</div>
+  <div id="realtime-status">â—</div>
   <div id="platform-indicator">Detecting...</div>
   
   <div id="header" class="safe">
@@ -462,7 +462,7 @@
       <img id="header-logo" alt="Logo">
       <div id="rink-title">Rink</div>
     </div>
-    <div id="clock">â€”</div>
+    <div id="clock">Ã¢â‚¬â€</div>
   </div>
   
   <div id="code-screen" class="safe">
@@ -480,7 +480,7 @@
     <img id="empty-logo" alt="Logo">
     <div id="empty-title"></div>
     <div id="empty-status">No events scheduled today</div>
-    <div id="empty-clock">â€”</div>
+    <div id="empty-clock">Ã¢â‚¬â€</div>
   </div>
   
   <div id="ticker"><div id="ticker-track"></div></div>
@@ -490,6 +490,9 @@
     // Configuration
     var CONFIG = {
       POLL_INTERVAL: 60000, // Reduced to 60 seconds since we have realtime
+      HEARTBEAT_INTERVAL: 30000, // Send heartbeat every 30 seconds
+      WATCHDOG_INTERVAL: 1000, // Check for freeze every 1 second
+      FREEZE_THRESHOLD: 5000, // Consider frozen if no tick for 5 seconds
       PROGRESS_UPDATE_INTERVAL: 2000,
       DEFAULT_EVENT_DURATION: 90,
       FORCE_12H_CLOCK: true,
@@ -521,6 +524,88 @@
       currentTheme: null
     };
     
+
+    // Heartbeat & Watchdog System
+    var HEALTH = {
+      lastTick: Date.now(),
+      heartbeatHandle: null,
+      watchdogHandle: null,
+      isVisible: true,
+      freezeCount: 0
+    };
+    
+    // Watchdog: detect if page is frozen
+    function startWatchdog() {
+      if (HEALTH.watchdogHandle) return;
+      
+      // Update tick every second
+      setInterval(function() {
+        HEALTH.lastTick = Date.now();
+      }, CONFIG.WATCHDOG_INTERVAL);
+      
+      // Check for freezes
+      HEALTH.watchdogHandle = setInterval(function() {
+        var timeSinceLastTick = Date.now() - HEALTH.lastTick;
+        
+        if (timeSinceLastTick > CONFIG.FREEZE_THRESHOLD) {
+          HEALTH.freezeCount++;
+          console.warn('Page appears frozen:', timeSinceLastTick, 'ms');
+          sendHealthBeacon('frozen');
+        }
+      }, CONFIG.FREEZE_THRESHOLD + 1000);
+    }
+    
+    // Heartbeat: prove browser is alive and running
+    function startHeartbeat() {
+      if (HEALTH.heartbeatHandle) return;
+      
+      HEALTH.heartbeatHandle = setInterval(function() {
+        sendHealthBeacon('heartbeat');
+      }, CONFIG.HEARTBEAT_INTERVAL);
+      
+      // Send immediate heartbeat on start
+      sendHealthBeacon('heartbeat');
+    }
+    
+    // Send health signal using beacon (survives page unload)
+    function sendHealthBeacon(eventType) {
+      if (!state.screenCode) return;
+      
+      var payload = {
+        screen_code: state.screenCode,
+        event_type: eventType,
+        timestamp: new Date().toISOString(),
+        visibility: document.visibilityState || 'visible',
+        freeze_count: HEALTH.freezeCount,
+        user_agent: navigator.userAgent.substring(0, 100)
+      };
+      
+      // Use sendBeacon for reliability (works even during page unload)
+      if (navigator.sendBeacon) {
+        var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        navigator.sendBeacon(buildApiUrl() + '&health=1', blob);
+      }
+    }
+    
+    // Visibility change detection
+    function setupVisibilityTracking() {
+      if (typeof document.visibilityState === 'undefined') return;
+      
+      document.addEventListener('visibilitychange', function() {
+        HEALTH.isVisible = document.visibilityState === 'visible';
+        sendHealthBeacon(HEALTH.isVisible ? 'visible' : 'hidden');
+      });
+      
+      // Page lifecycle events
+      window.addEventListener('pagehide', function() {
+        sendHealthBeacon('pagehide');
+      });
+      
+      window.addEventListener('pageshow', function() {
+        sendHealthBeacon('pageshow');
+      });
+    }
+
     // Supabase Realtime variables
     var supabaseClient = null;
     var realtimeChannel = null;
@@ -554,13 +639,13 @@
       indicator.className = status;
       switch(status) {
         case 'connected':
-          indicator.textContent = '● Live';
+          indicator.textContent = 'â— Live';
           break;
         case 'connecting':
-          indicator.textContent = '● Connecting...';
+          indicator.textContent = 'â— Connecting...';
           break;
         case 'disconnected':
-          indicator.textContent = '● Offline';
+          indicator.textContent = 'â— Offline';
           break;
       }
     }
@@ -716,7 +801,7 @@
         registered: true,
         rink_title: 'Preview Arena',
         rink_logo: '',
-        ticker_text: 'This is a preview of your custom theme â€¢ Helmets required â€¢ Public skate 7 PM',
+        ticker_text: 'This is a preview of your custom theme Ã¢â‚¬Â¢ Helmets required Ã¢â‚¬Â¢ Public skate 7 PM',
         events: [
           {
             teams: 'Hawks vs Eagles',
@@ -1012,7 +1097,7 @@
         return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, mins, 0, 0); 
       }
       
-      var parts = s.split(/\s*[-â€“â€”]\s*/); 
+      var parts = s.split(/\s*[-Ã¢â‚¬â€œÃ¢â‚¬â€]\s*/); 
       if (parts.length === 2) return parseTimeToDate(parts[0]);
       
       return null;
@@ -1020,9 +1105,9 @@
     
     function getEventTimes(ev){
       var sRaw = ev && (ev.start_time || ev.startTime || ev.start || 
-                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[0]));
+                 (ev.time && String(ev.time).split(/\s*[-Ã¢â‚¬â€œÃ¢â‚¬â€]\s*/)[0]));
       var eRaw = ev && (ev.end_time || ev.endTime || ev.end || 
-                 (ev.time && String(ev.time).split(/\s*[-â€“â€”]\s*/)[1]));
+                 (ev.time && String(ev.time).split(/\s*[-Ã¢â‚¬â€œÃ¢â‚¬â€]\s*/)[1]));
       
       var start = parseTimeToDate(sRaw);
       var end = parseTimeToDate(eRaw);
@@ -1053,10 +1138,10 @@
         var ap = h >= 12 ? 'PM' : 'AM'; 
         var hh = h % 12; 
         if (hh === 0) hh = 12; 
-        return dow + ', ' + mon + ' ' + day + ' · ' + hh + ':' + m + ' ' + ap; 
+        return dow + ', ' + mon + ' ' + day + ' Â· ' + hh + ':' + m + ' ' + ap; 
       } 
       
-      return dow + ', ' + mon + ' ' + day + ' · ' + pad2(h) + ':' + m; 
+      return dow + ', ' + mon + ' ' + day + ' Â· ' + pad2(h) + ':' + m; 
     }
     
     function updateClock(){ 
@@ -1683,6 +1768,12 @@
     }
     
     // Initialize everything
+
+    // Start health monitoring
+    startWatchdog();
+    startHeartbeat();
+    setupVisibilityTracking();
+    
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
     state.isRegistered = getRegistrationStatus();
