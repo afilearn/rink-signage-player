@@ -1588,6 +1588,36 @@
           console.log('Events count:', data && data.events ? data.events.length : 0);
           console.log('Rink title:', data && data.rink_title);
           
+          // Check for API errors (503 database errors)
+          if (data && data.error === 'database_error') {
+            console.error('>>> DATABASE ERROR - Using cached data if available');
+            // Try to use cached data
+            var cache = getCacheWithExpiry('last_payload_' + state.screenCode);
+            if (cache && cache.registered !== false) {
+              maybeRender(cache);
+              return;
+            }
+            // If no cache and was previously registered, show empty screen
+            if (getRegistrationStatus() && state.lastSuccessfulData) {
+              maybeRender({
+                registered: true,
+                rink_title: state.lastSuccessfulData.rink_title || '',
+                rink_logo: state.lastSuccessfulData.rink_logo || '',
+                ticker_text: state.lastSuccessfulData.ticker_text || '',
+                events: [],
+                theme: state.currentTheme
+              });
+              return;
+            }
+            // Otherwise show code screen
+            show('code-screen');
+            hide('header');
+            hide('event-screen');
+            hide('empty-screen');
+            stopAutoScroll();
+            return;
+          }
+          
           if (!data || data.registered === false) {
             console.log('>>> SHOWING CODE SCREEN (not registered)');
             setRegistrationStatus(false);
