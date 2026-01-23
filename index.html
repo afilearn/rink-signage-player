@@ -476,6 +476,7 @@
   (function(){
     var CONFIG = {
       POLL_INTERVAL: 60000,
+      HEARTBEAT_INTERVAL: 30000,
       PROGRESS_UPDATE_INTERVAL: 2000,
       DEFAULT_EVENT_DURATION: 90,
       FORCE_12H_CLOCK: true,
@@ -1611,6 +1612,29 @@
     } else {
       var codeEl = document.getElementById('screen-code'); 
       if (codeEl) codeEl.textContent = state.screenCode;
+      
+      // Simple heartbeat - only on actual screens (not preview)
+      function sendHeartbeat() {
+        if (!state.screenCode) return;
+        
+        fetch(buildApiUrl() + '&health=1', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            screen_code: state.screenCode,
+            timestamp: new Date().toISOString(),
+            event_type: 'heartbeat'
+          }),
+          keepalive: true,
+          credentials: 'omit'
+        }).catch(function() {
+          // Silent fail - not critical
+        });
+      }
+      
+      // Send heartbeat every 30 seconds
+      sendHeartbeat(); // Immediate first ping
+      setInterval(sendHeartbeat, CONFIG.HEARTBEAT_INTERVAL);
       
       updateClock(); 
       setInterval(updateClock, 10000);
