@@ -1588,6 +1588,23 @@
             return;
           }
           
+          // NEW: If screen is already registered but user visits without ?code=, show registration screen
+          var urlParams = parseQuery();
+          if (data && data.registered === true && !urlParams.code) {
+            // Generate fresh code for new screen
+            localStorage.removeItem('screen_uuid');
+            state.screenCode = getOrCreateScreenCode();
+            var codeEl = document.getElementById('screen-code');
+            if (codeEl) codeEl.textContent = state.screenCode;
+            
+            show('code-screen');
+            hide('header');
+            hide('event-screen');
+            hide('empty-screen');
+            stopAutoScroll();
+            return;
+          }
+          
           maybeRender(data);
         }, 
         function(error){
