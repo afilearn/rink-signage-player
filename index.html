@@ -928,9 +928,24 @@
     }
 
     async function checkAndLoadCombinedIfNeeded(data) {
-      if (!supabaseClient || !data || !data.rink_id) return false;
+      if (!data || !data.rink_id) return false;
 
-      // Fetch layout settings from database
+      // Check if API already provided combined_rinks data (preferred method)
+      if (data.combined_rinks && Array.isArray(data.combined_rinks) && data.combined_rinks.length > 1) {
+        console.log('>>> LOADING COMBINED DISPLAY (from API)');
+        console.log('Layout:', data.layout);
+        console.log('Combined rinks count:', data.combined_rinks.length);
+
+        state.combinedLayout = data.layout;
+        state.combinedRinks = data.combined_rinks;
+
+        renderCombinedDisplay(data.layout, data.combined_rinks);
+        return true;
+      }
+
+      // Fallback: Fetch layout settings from database if API didn't provide combined_rinks
+      if (!supabaseClient) return false;
+
       var layoutSettings = await fetchLayoutSettings(data.rink_id);
 
       if (!layoutSettings || !layoutSettings.layout || layoutSettings.layout === 'single') {
@@ -944,7 +959,7 @@
       data.slot_d_rink_id = layoutSettings.slot_d_rink_id;
 
       if (checkCombinedLayout(data)) {
-        console.log('>>> LOADING COMBINED DISPLAY');
+        console.log('>>> LOADING COMBINED DISPLAY (fallback method)');
         return await loadCombinedDisplay(data);
       }
 
@@ -952,83 +967,165 @@
     }
 
     async function fetchRinkData(rinkId) {
-      if (!supabaseClient || !rinkId) return null;
+      if (!rinkId) return null;
 
       try {
-        // Get rink info
-        var rinkResult = await supabaseClient
-          .from('rinks')
-          .select('id, name, screen_code, logo_url, ticker_text, theme_bg_color, theme_header_bg, theme_accent, theme_event_text, theme_time_text, theme_room_text, theme_live_badge, theme_live_bg, theme_progress_bar, font_scale')
-          .eq('id', rinkId)
-          .single();
+        // First, get the screen_code for this rink_id so we can use the API
+        // Try to get screen_code from Supabase first
+        var screenCode = null;
 
-        if (rinkResult.error || !rinkResult.data) return null;
+        if (supabaseClient) {
+          try {
+            var codeResult = await supabaseClient
+              .from('rinks')
+              .select('screen_code')
+              .eq('id', rinkId)
+              .maybeSingle();  // Use maybeSingle to avoid 406 on no results
 
-        var rink = rinkResult.data;
+            if (codeResult.data && codeResult.data.screen_code) {
+              screenCode = codeResult.data.screen_code;
+            }
+          } catch (e) {
+            console.log('Could not fetch screen_code from Supabase:', e);
+          }
+        }
 
-        // Get today's bookings
-        var today = new Date();
-        var todayStr = today.getFullYear() + '-' +
-                       String(today.getMonth() + 1).padStart(2, '0') + '-' +
-                       String(today.getDate()).padStart(2, '0');
+        // If we got a screen_code, use the API endpoint
+        if (screenCode) {
+          return new Promise(function(resolve) {
+            var apiUrl = 'https://post-signage-api.abdullaafraz.workers.dev?id=' +
+                         encodeURIComponent(screenCode);
 
-        var bookingsResult = await supabaseClient
-          .from('bookings')
-          .select('*')
-          .eq('rink_id', rinkId)
-          .eq('date', todayStr)
-          .order('start_time', { ascending: true });
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', apiUrl, true);
+            xhr.setRequestHeader('Cache-Control', 'no-cache');
+            xhr.timeout = CONFIG.API_TIMEOUT;
 
-        var events = [];
-        if (!bookingsResult.error && bookingsResult.data) {
-          events = bookingsResult.data.map(function(b) {
-            return {
-              teams: b.teams,
-              room: b.room,
-              start_time: b.start_time,
-              end_time: b.end_time,
-              date: b.date
+            xhr.onreadystatechange = function() {
+              if (xhr.readyState === 4) {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data && data.registered) {
+                      resolve({
+                        rink_id: data.rink_id,
+                        rink_title: data.rink_title,
+                        rink_logo: data.rink_logo,
+                        ticker_text: data.ticker_text || data.announcement || '',
+                        events: data.events || [],
+                        theme: data.theme || null,
+                        font_scale: data.font_scale
+                      });
+                    } else {
+                      resolve(null);
+                    }
+                  } catch (e) {
+                    console.log('Error parsing rink API response:', e);
+                    resolve(null);
+                  }
+                } else {
+                  console.log('API request failed with status:', xhr.status);
+                  resolve(null);
+                }
+              }
             };
+
+            xhr.onerror = function() {
+              console.log('API request error');
+              resolve(null);
+            };
+
+            xhr.ontimeout = function() {
+              console.log('API request timeout');
+              resolve(null);
+            };
+
+            xhr.send(null);
           });
         }
 
-        // Get active announcements
-        var now = new Date().toISOString();
-        var announcementsResult = await supabaseClient
-          .from('announcements')
-          .select('message, priority')
-          .or('rink_id.eq.' + rinkId + ',rink_id.is.null')
-          .lte('start_time', now)
-          .gte('end_time', now)
-          .order('priority', { ascending: false })
-          .limit(1);
+        // Fallback: Try direct Supabase query if no screen_code
+        // This may fail due to RLS but we'll try anyway
+        if (supabaseClient) {
+          var rinkResult = await supabaseClient
+            .from('rinks')
+            .select('id, name, screen_code, logo_url, ticker_text, theme_bg_color, theme_header_bg, theme_accent, theme_event_text, theme_time_text, theme_room_text, theme_live_badge, theme_live_bg, theme_progress_bar, font_scale')
+            .eq('id', rinkId)
+            .maybeSingle();  // Use maybeSingle to avoid 406
 
-        var ticker = '';
-        if (!announcementsResult.error && announcementsResult.data && announcementsResult.data.length > 0) {
-          ticker = announcementsResult.data[0].message;
-        } else if (rink.ticker_text) {
-          ticker = rink.ticker_text;
+          if (rinkResult.error || !rinkResult.data) {
+            console.log('Supabase rink query failed:', rinkResult.error);
+            return null;
+          }
+
+          var rink = rinkResult.data;
+
+          // Get today's bookings
+          var today = new Date();
+          var todayStr = today.getFullYear() + '-' +
+                         String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                         String(today.getDate()).padStart(2, '0');
+
+          var bookingsResult = await supabaseClient
+            .from('bookings')
+            .select('*')
+            .eq('rink_id', rinkId)
+            .eq('date', todayStr)
+            .order('start_time', { ascending: true });
+
+          var events = [];
+          if (!bookingsResult.error && bookingsResult.data) {
+            events = bookingsResult.data.map(function(b) {
+              return {
+                teams: b.teams,
+                room: b.room,
+                start_time: b.start_time,
+                end_time: b.end_time,
+                date: b.date
+              };
+            });
+          }
+
+          // Get active announcements
+          var now = new Date().toISOString();
+          var announcementsResult = await supabaseClient
+            .from('announcements')
+            .select('message, priority')
+            .or('rink_id.eq.' + rinkId + ',rink_id.is.null')
+            .lte('start_time', now)
+            .gte('end_time', now)
+            .order('priority', { ascending: false })
+            .limit(1);
+
+          var ticker = '';
+          if (!announcementsResult.error && announcementsResult.data && announcementsResult.data.length > 0) {
+            ticker = announcementsResult.data[0].message;
+          } else if (rink.ticker_text) {
+            ticker = rink.ticker_text;
+          }
+
+          return {
+            rink_id: rink.id,
+            rink_title: rink.name,
+            rink_logo: rink.logo_url,
+            ticker_text: ticker,
+            events: events,
+            theme: {
+              bg_color: rink.theme_bg_color,
+              header_bg: rink.theme_header_bg,
+              accent: rink.theme_accent,
+              event_text: rink.theme_event_text,
+              time_text: rink.theme_time_text,
+              room_text: rink.theme_room_text,
+              live_badge: rink.theme_live_badge,
+              live_bg: rink.theme_live_bg,
+              progress_bar: rink.theme_progress_bar
+            },
+            font_scale: rink.font_scale
+          };
         }
 
-        return {
-          rink_id: rink.id,
-          rink_title: rink.name,
-          rink_logo: rink.logo_url,
-          ticker_text: ticker,
-          events: events,
-          theme: {
-            bg_color: rink.theme_bg_color,
-            header_bg: rink.theme_header_bg,
-            accent: rink.theme_accent,
-            event_text: rink.theme_event_text,
-            time_text: rink.theme_time_text,
-            room_text: rink.theme_room_text,
-            live_badge: rink.theme_live_badge,
-            live_bg: rink.theme_live_bg,
-            progress_bar: rink.theme_progress_bar
-          },
-          font_scale: rink.font_scale
-        };
+        return null;
       } catch (e) {
         console.log('Error fetching rink data:', e);
         return null;
@@ -1036,8 +1133,6 @@
     }
 
     async function loadCombinedDisplay(primaryData) {
-      if (!supabaseClient) return false;
-
       var layout = primaryData.layout;
       var rinkIds = [primaryData.rink_id];
 
@@ -1050,7 +1145,10 @@
         rinkIds.push(primaryData.slot_d_rink_id);
       }
 
-      console.log('Loading combined display with layout:', layout, 'rinks:', rinkIds);
+      console.log('=== COMBINED DISPLAY ===');
+      console.log('Layout:', layout);
+      console.log('Primary rink ID:', primaryData.rink_id);
+      console.log('All rink IDs to load:', rinkIds);
 
       // Fetch data for all rinks
       var rinkDataArray = [];
@@ -1065,14 +1163,31 @@
         theme: primaryData.theme,
         font_scale: primaryData.font_scale
       });
+      console.log('Primary rink loaded:', primaryData.rink_title);
 
       // Fetch additional rinks
       for (var i = 1; i < rinkIds.length; i++) {
+        console.log('Fetching secondary rink:', rinkIds[i]);
         var rinkData = await fetchRinkData(rinkIds[i]);
         if (rinkData) {
+          console.log('Secondary rink loaded:', rinkData.rink_title);
           rinkDataArray.push(rinkData);
+        } else {
+          console.log('Failed to load secondary rink:', rinkIds[i]);
+          // Still show a placeholder panel for missing rinks
+          rinkDataArray.push({
+            rink_id: rinkIds[i],
+            rink_title: 'Loading...',
+            rink_logo: null,
+            ticker_text: '',
+            events: [],
+            theme: null,
+            font_scale: 1
+          });
         }
       }
+
+      console.log('Total rinks loaded:', rinkDataArray.length);
 
       state.combinedLayout = layout;
       state.combinedRinks = rinkDataArray;
