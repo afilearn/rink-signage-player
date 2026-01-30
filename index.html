@@ -1265,6 +1265,16 @@
       headerLeft.appendChild(title);
 
       header.appendChild(headerLeft);
+
+      // Add clock to panel header (only on first panel to avoid duplication)
+      if (index === 0) {
+        var clock = document.createElement('div');
+        clock.className = 'rink-panel-clock';
+        clock.id = 'combined-clock';
+        clock.textContent = fmtClock(new Date());
+        header.appendChild(clock);
+      }
+
       panel.appendChild(header);
 
       // Events container
@@ -1733,13 +1743,15 @@
       return dow + ', ' + mon + ' ' + day + ' · ' + pad2(h) + ':' + m; 
     }
     
-    function updateClock(){ 
-      var now = new Date(); 
-      var s = fmtClock(now); 
-      var el1 = document.getElementById('clock'); 
-      if (el1) el1.textContent = s; 
-      var el2 = document.getElementById('empty-clock'); 
-      if (el2) el2.textContent = s; 
+    function updateClock(){
+      var now = new Date();
+      var s = fmtClock(now);
+      var el1 = document.getElementById('clock');
+      if (el1) el1.textContent = s;
+      var el2 = document.getElementById('empty-clock');
+      if (el2) el2.textContent = s;
+      var el3 = document.getElementById('combined-clock');
+      if (el3) el3.textContent = s;
     }
     
     function buildApiUrl(){ 
