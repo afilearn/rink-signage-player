@@ -483,10 +483,168 @@
       100% { opacity: 0.9; }
     }
 
-    @media (max-width: 1200px) { 
-      #rink-title { font-size: calc(4.2vh * var(--font-scale)); } 
-      #clock { font-size: calc(3.4vh * var(--font-scale)); } 
-      .event-only { font-size: calc(3vh * var(--font-scale)); } 
+    @media (max-width: 1200px) {
+      #rink-title { font-size: calc(4.2vh * var(--font-scale)); }
+      #clock { font-size: calc(3.4vh * var(--font-scale)); }
+      .event-only { font-size: calc(3vh * var(--font-scale)); }
+    }
+
+    /* ==============================================
+       COMBINED DISPLAY LAYOUTS
+       ============================================== */
+
+    #combined-display {
+      display: none;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #combined-display.active {
+      display: grid;
+    }
+
+    /* 2-Up Vertical (Top/Bottom) */
+    #combined-display.layout-2-up-vertical {
+      grid-template-rows: 1fr 1fr;
+      grid-template-columns: 1fr;
+    }
+
+    /* 2-Up Horizontal (Left/Right) */
+    #combined-display.layout-2-up-horizontal {
+      grid-template-rows: 1fr;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* 3-Up (One on top, two on bottom) */
+    #combined-display.layout-3-up {
+      grid-template-rows: 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    #combined-display.layout-3-up .rink-panel:first-child {
+      grid-column: 1 / -1;
+    }
+
+    /* 4-Grid */
+    #combined-display.layout-4-grid {
+      grid-template-rows: 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    /* Individual Rink Panel */
+    .rink-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+    }
+
+    .rink-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5vh 2vw;
+      background: var(--theme-header-bg);
+      border-bottom: 0.3vh solid rgba(255,255,255,0.1);
+      gap: 1.5vw;
+      min-height: 7vh;
+    }
+
+    .rink-panel-header-left {
+      display: flex;
+      align-items: center;
+      gap: 1vw;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .rink-panel-logo {
+      height: 5vh;
+      width: 5vh;
+      border-radius: 50%;
+      background: #fff;
+      object-fit: contain;
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .rink-panel-title {
+      font-size: calc(2.8vh * var(--font-scale));
+      font-weight: 700;
+      letter-spacing: 0.15vh;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--theme-accent);
+    }
+
+    .rink-panel-clock {
+      font-size: calc(2.2vh * var(--font-scale));
+      color: var(--theme-time-text);
+      white-space: nowrap;
+      font-weight: 600;
+    }
+
+    .rink-panel-events {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 1.5vw 2vh;
+      font-size: calc(2.2vh * var(--font-scale));
+    }
+
+    .rink-panel .event-header {
+      font-size: calc(1.8vh * var(--font-scale));
+      padding: 1.2vh 0.8vw;
+    }
+
+    .rink-panel .event-row {
+      font-size: calc(2vh * var(--font-scale));
+      padding: 1.2vh 0.8vw;
+    }
+
+    .rink-panel .event-cell {
+      padding: 0 1vw;
+    }
+
+    .rink-panel .live-pill {
+      font-size: calc(1.6vh * var(--font-scale));
+      padding: 0.5vh 1vh;
+    }
+
+    .rink-panel-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: rgba(255,255,255,0.5);
+      font-size: calc(2vh * var(--font-scale));
+      gap: 1vh;
+    }
+
+    .rink-panel-empty-icon {
+      font-size: calc(4vh * var(--font-scale));
+      opacity: 0.4;
+    }
+
+    /* Hide normal screens when combined display is active */
+    body.combined-mode #header,
+    body.combined-mode #event-screen,
+    body.combined-mode #empty-screen,
+    body.combined-mode #code-screen {
+      display: none !important;
+    }
+
+    body.combined-mode #ticker {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
     }
   </style>
 </head>
@@ -544,7 +702,12 @@
     <div id="empty-status">No events scheduled today</div>
     <div id="empty-clock">—</div>
   </div>
-  
+
+  <!-- Combined Display Container for Multi-Rink Layouts -->
+  <div id="combined-display">
+    <!-- Rink panels will be dynamically inserted here -->
+  </div>
+
   <div id="ticker"><div id="ticker-track"></div></div>
 
   <script>
@@ -579,9 +742,11 @@
       pollHandle: null,
       isRegistered: false,
       lastSuccessfulData: null,
-      currentTheme: null
+      currentTheme: null,
+      combinedLayout: null,
+      combinedRinks: []
     };
-    
+
     var supabaseClient = null;
     var realtimeChannel = null;
     var currentRinkId = null;
@@ -713,8 +878,373 @@
         document.documentElement.style.setProperty('--font-scale', '1');
         return;
       }
-      
+
       document.documentElement.style.setProperty('--font-scale', scale);
+    }
+
+    // ==============================================
+    // COMBINED DISPLAY FUNCTIONS
+    // ==============================================
+
+    function checkCombinedLayout(rinkData) {
+      if (!rinkData) return false;
+
+      var layout = rinkData.layout || 'single';
+      if (layout === 'single') return false;
+
+      // Check if we have the required slot rinks
+      var hasSlotB = !!rinkData.slot_b_rink_id;
+      var hasSlotC = !!rinkData.slot_c_rink_id;
+      var hasSlotD = !!rinkData.slot_d_rink_id;
+
+      if (layout === '2-up-vertical' || layout === '2-up-horizontal') {
+        return hasSlotB;
+      } else if (layout === '3-up') {
+        return hasSlotB && hasSlotC;
+      } else if (layout === '4-grid') {
+        return hasSlotB && hasSlotC && hasSlotD;
+      }
+
+      return false;
+    }
+
+    async function fetchLayoutSettings(rinkId) {
+      if (!supabaseClient || !rinkId) return null;
+
+      try {
+        var result = await supabaseClient
+          .from('rinks')
+          .select('layout, slot_b_rink_id, slot_c_rink_id, slot_d_rink_id')
+          .eq('id', rinkId)
+          .single();
+
+        if (result.error || !result.data) return null;
+
+        return result.data;
+      } catch (e) {
+        console.log('Error fetching layout settings:', e);
+        return null;
+      }
+    }
+
+    async function checkAndLoadCombinedIfNeeded(data) {
+      if (!supabaseClient || !data || !data.rink_id) return false;
+
+      // Fetch layout settings from database
+      var layoutSettings = await fetchLayoutSettings(data.rink_id);
+
+      if (!layoutSettings || !layoutSettings.layout || layoutSettings.layout === 'single') {
+        return false;
+      }
+
+      // Merge layout settings into data
+      data.layout = layoutSettings.layout;
+      data.slot_b_rink_id = layoutSettings.slot_b_rink_id;
+      data.slot_c_rink_id = layoutSettings.slot_c_rink_id;
+      data.slot_d_rink_id = layoutSettings.slot_d_rink_id;
+
+      if (checkCombinedLayout(data)) {
+        console.log('>>> LOADING COMBINED DISPLAY');
+        return await loadCombinedDisplay(data);
+      }
+
+      return false;
+    }
+
+    async function fetchRinkData(rinkId) {
+      if (!supabaseClient || !rinkId) return null;
+
+      try {
+        // Get rink info
+        var rinkResult = await supabaseClient
+          .from('rinks')
+          .select('id, name, screen_code, logo_url, ticker_text, theme_bg_color, theme_header_bg, theme_accent, theme_event_text, theme_time_text, theme_room_text, theme_live_badge, theme_live_bg, theme_progress_bar, font_scale')
+          .eq('id', rinkId)
+          .single();
+
+        if (rinkResult.error || !rinkResult.data) return null;
+
+        var rink = rinkResult.data;
+
+        // Get today's bookings
+        var today = new Date();
+        var todayStr = today.getFullYear() + '-' +
+                       String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                       String(today.getDate()).padStart(2, '0');
+
+        var bookingsResult = await supabaseClient
+          .from('bookings')
+          .select('*')
+          .eq('rink_id', rinkId)
+          .eq('date', todayStr)
+          .order('start_time', { ascending: true });
+
+        var events = [];
+        if (!bookingsResult.error && bookingsResult.data) {
+          events = bookingsResult.data.map(function(b) {
+            return {
+              teams: b.teams,
+              room: b.room,
+              start_time: b.start_time,
+              end_time: b.end_time,
+              date: b.date
+            };
+          });
+        }
+
+        // Get active announcements
+        var now = new Date().toISOString();
+        var announcementsResult = await supabaseClient
+          .from('announcements')
+          .select('message, priority')
+          .or('rink_id.eq.' + rinkId + ',rink_id.is.null')
+          .lte('start_time', now)
+          .gte('end_time', now)
+          .order('priority', { ascending: false })
+          .limit(1);
+
+        var ticker = '';
+        if (!announcementsResult.error && announcementsResult.data && announcementsResult.data.length > 0) {
+          ticker = announcementsResult.data[0].message;
+        } else if (rink.ticker_text) {
+          ticker = rink.ticker_text;
+        }
+
+        return {
+          rink_id: rink.id,
+          rink_title: rink.name,
+          rink_logo: rink.logo_url,
+          ticker_text: ticker,
+          events: events,
+          theme: {
+            bg_color: rink.theme_bg_color,
+            header_bg: rink.theme_header_bg,
+            accent: rink.theme_accent,
+            event_text: rink.theme_event_text,
+            time_text: rink.theme_time_text,
+            room_text: rink.theme_room_text,
+            live_badge: rink.theme_live_badge,
+            live_bg: rink.theme_live_bg,
+            progress_bar: rink.theme_progress_bar
+          },
+          font_scale: rink.font_scale
+        };
+      } catch (e) {
+        console.log('Error fetching rink data:', e);
+        return null;
+      }
+    }
+
+    async function loadCombinedDisplay(primaryData) {
+      if (!supabaseClient) return false;
+
+      var layout = primaryData.layout;
+      var rinkIds = [primaryData.rink_id];
+
+      // Add slot rinks based on layout
+      if (primaryData.slot_b_rink_id) rinkIds.push(primaryData.slot_b_rink_id);
+      if ((layout === '3-up' || layout === '4-grid') && primaryData.slot_c_rink_id) {
+        rinkIds.push(primaryData.slot_c_rink_id);
+      }
+      if (layout === '4-grid' && primaryData.slot_d_rink_id) {
+        rinkIds.push(primaryData.slot_d_rink_id);
+      }
+
+      console.log('Loading combined display with layout:', layout, 'rinks:', rinkIds);
+
+      // Fetch data for all rinks
+      var rinkDataArray = [];
+
+      // First rink uses primaryData (already have it)
+      rinkDataArray.push({
+        rink_id: primaryData.rink_id,
+        rink_title: primaryData.rink_title,
+        rink_logo: primaryData.rink_logo,
+        ticker_text: primaryData.ticker_text,
+        events: primaryData.events,
+        theme: primaryData.theme,
+        font_scale: primaryData.font_scale
+      });
+
+      // Fetch additional rinks
+      for (var i = 1; i < rinkIds.length; i++) {
+        var rinkData = await fetchRinkData(rinkIds[i]);
+        if (rinkData) {
+          rinkDataArray.push(rinkData);
+        }
+      }
+
+      state.combinedLayout = layout;
+      state.combinedRinks = rinkDataArray;
+
+      renderCombinedDisplay(layout, rinkDataArray);
+      return true;
+    }
+
+    function renderCombinedDisplay(layout, rinkDataArray) {
+      var container = document.getElementById('combined-display');
+      if (!container) return;
+
+      // Clear existing content
+      container.innerHTML = '';
+      container.className = 'active layout-' + layout;
+
+      // Add body class for combined mode
+      document.body.classList.add('combined-mode');
+
+      // Collect all ticker text
+      var allTickers = [];
+
+      // Create panel for each rink
+      for (var i = 0; i < rinkDataArray.length; i++) {
+        var rinkData = rinkDataArray[i];
+        var panel = createRinkPanel(rinkData, i);
+        container.appendChild(panel);
+
+        if (rinkData.ticker_text) {
+          allTickers.push(rinkData.rink_title + ': ' + rinkData.ticker_text);
+        }
+      }
+
+      // Update ticker with combined announcements
+      var combinedTicker = allTickers.join('     •     ');
+      updateTickerText(combinedTicker);
+
+      // Show the combined display
+      hide('code-screen');
+      hide('header');
+      hide('event-screen');
+      hide('empty-screen');
+    }
+
+    function createRinkPanel(rinkData, index) {
+      var panel = document.createElement('div');
+      panel.className = 'rink-panel';
+      panel.id = 'rink-panel-' + index;
+
+      var now = new Date();
+      var events = filterActiveEvents(rinkData.events || [], now);
+
+      // Panel header
+      var header = document.createElement('div');
+      header.className = 'rink-panel-header';
+
+      var headerLeft = document.createElement('div');
+      headerLeft.className = 'rink-panel-header-left';
+
+      if (rinkData.rink_logo) {
+        var logo = document.createElement('img');
+        logo.className = 'rink-panel-logo';
+        logo.src = rinkData.rink_logo;
+        logo.style.display = 'block';
+        logo.onerror = function() { this.style.display = 'none'; };
+        headerLeft.appendChild(logo);
+      }
+
+      var title = document.createElement('div');
+      title.className = 'rink-panel-title';
+      title.textContent = rinkData.rink_title || 'Rink';
+      if (rinkData.theme && rinkData.theme.accent) {
+        title.style.color = rinkData.theme.accent;
+      }
+      headerLeft.appendChild(title);
+
+      header.appendChild(headerLeft);
+      panel.appendChild(header);
+
+      // Events container
+      if (events.length > 0) {
+        var eventsContainer = document.createElement('div');
+        eventsContainer.className = 'rink-panel-events';
+
+        var html = '<div class="event-header">'
+                 + '<div class="event-cell">Event</div>'
+                 + '<div class="event-cell time">Time</div>'
+                 + '<div class="event-cell room">Room</div>'
+                 + '</div>';
+
+        for (var j = 0; j < events.length; j++) {
+          var ev = events[j];
+          var teams = esc(ev.teams || '');
+          var startRaw = ev.start_time || '';
+          var endRaw = ev.end_time || '';
+          var room = esc(ev.room || '');
+
+          var timeStr = '';
+          if (startRaw || endRaw) {
+            var a = to12h(startRaw);
+            var b = to12h(endRaw);
+            timeStr = a && b ? (a + ' - ' + b) : (a || b);
+          }
+
+          var times = getEventTimes(ev);
+          var isLive = false;
+
+          if (times.start) {
+            var n = now.getTime();
+            var s = times.start.getTime();
+            var e = times.end ? times.end.getTime() : null;
+
+            if (n >= s && (e === null || n < e)) {
+              isLive = true;
+            }
+          }
+
+          html += '<div class="event-row' + (isLive ? ' live' : '') + '">'
+               + '<div class="event-cell">' + teams + (isLive ? ' <span class="live-pill">LIVE</span>' : '') + '</div>'
+               + '<div class="event-cell time">' + timeStr + '</div>'
+               + '<div class="event-cell room">' + room + '</div>'
+               + '</div>';
+        }
+
+        eventsContainer.innerHTML = html;
+        panel.appendChild(eventsContainer);
+      } else {
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'rink-panel-empty';
+        emptyDiv.innerHTML = '<div class="rink-panel-empty-icon">📅</div>'
+                           + '<div>No events scheduled</div>';
+        panel.appendChild(emptyDiv);
+      }
+
+      return panel;
+    }
+
+    function filterActiveEvents(events, now) {
+      var filtered = [];
+
+      for (var i = 0; i < events.length; i++) {
+        var ev = events[i];
+        var times = getEventTimes(ev);
+
+        if (!times.start && !times.end) continue;
+        if (times.end && now.getTime() >= times.end.getTime()) continue;
+
+        ev.__start = times.start ? times.start.getTime() : Number.MAX_SAFE_INTEGER;
+        ev.__times = times;
+        filtered.push(ev);
+      }
+
+      filtered.sort(function(a, b) {
+        return a.__start - b.__start;
+      });
+
+      return filtered.slice(0, 10); // Limit to 10 events per panel
+    }
+
+    function updateCombinedDisplay() {
+      if (!state.combinedLayout || !state.combinedRinks || state.combinedRinks.length === 0) return;
+
+      // Re-render panels with updated time/live status
+      var container = document.getElementById('combined-display');
+      if (!container) return;
+
+      container.innerHTML = '';
+
+      for (var i = 0; i < state.combinedRinks.length; i++) {
+        var panel = createRinkPanel(state.combinedRinks[i], i);
+        container.appendChild(panel);
+      }
     }
 
     function loadCachedTheme() {
@@ -1561,28 +2091,80 @@
       renderFromPayload(data);
     }
     
+    async function checkScreenGroup(rinkId) {
+      if (!supabaseClient || !rinkId) return null;
+
+      try {
+        // Check if this rink is part of an active group
+        const { data: membership, error: memberError } = await supabaseClient
+          .from('screen_group_members')
+          .select(`
+            id,
+            is_master,
+            group_id,
+            screen_groups!inner (
+              id,
+              active
+            )
+          `)
+          .eq('rink_id', rinkId)
+          .eq('screen_groups.active', true)
+          .single();
+
+        if (memberError || !membership || membership.is_master) {
+          // Not in a group, or is the master, so show own content
+          return null;
+        }
+
+        // This screen is a follower - find the master
+        const { data: master, error: masterError } = await supabaseClient
+          .from('screen_group_members')
+          .select(`
+            rink_id,
+            rinks!inner (
+              id,
+              screen_code
+            )
+          `)
+          .eq('group_id', membership.group_id)
+          .eq('is_master', true)
+          .single();
+
+        if (masterError || !master) {
+          console.log('No master found for group');
+          return null;
+        }
+
+        // Return the master's screen code
+        return master.rinks.screen_code;
+      } catch (e) {
+        console.log('Error checking screen group:', e);
+        return null;
+      }
+    }
+
     function checkAndLoadEvents(){
       if (isPreviewMode()) {
         return;
       }
-      
+
       state.retryCount = 0;
-      
+
       console.log('=== API CHECK ===');
       console.log('Current screen code:', state.screenCode);
       console.log('Stored in localStorage:', getLocal('screen_uuid'));
       console.log('API URL:', buildApiUrl());
-      
+
       xhrGetWithRetry(
-        buildApiUrl(), 
+        buildApiUrl(),
         function(txt){
-          var data = null; 
-          try{ 
-            data = JSON.parse(txt); 
+          var data = null;
+          try{
+            data = JSON.parse(txt);
           } catch(e){
             console.log('JSON parse error:', e);
           }
-          
+
           console.log('=== API RESPONSE ===');
           console.log('Registered:', data && data.registered);
           console.log('Events count:', data && data.events ? data.events.length : 0);
@@ -1621,16 +2203,80 @@
           if (!data || data.registered === false) {
             console.log('>>> SHOWING CODE SCREEN (not registered)');
             setRegistrationStatus(false);
-            show('code-screen'); 
-            hide('header'); 
-            hide('event-screen'); 
-            hide('empty-screen'); 
+            show('code-screen');
+            hide('header');
+            hide('event-screen');
+            hide('empty-screen');
             stopAutoScroll();
             return;
           }
-          
-          console.log('>>> RENDERING EVENTS (registered)');
-          maybeRender(data);
+
+          // Check if this screen is part of a group and should mirror master
+          if (data && data.rink_id) {
+            checkScreenGroup(data.rink_id).then(function(masterScreenCode) {
+              if (masterScreenCode && masterScreenCode !== state.screenCode) {
+                console.log('>>> SCREEN IS IN GROUP - Loading master content from:', masterScreenCode);
+                // Load master's content instead
+                var masterUrl = 'https://post-signage-api.abdullaafraz.workers.dev?id=' +
+                               encodeURIComponent(masterScreenCode);
+                xhrGetWithRetry(
+                  masterUrl,
+                  function(masterTxt) {
+                    try {
+                      var masterData = JSON.parse(masterTxt);
+                      if (masterData && masterData.registered) {
+                        console.log('>>> RENDERING MASTER CONTENT');
+                        maybeRender(masterData);
+                      } else {
+                        console.log('>>> MASTER NOT REGISTERED - Showing own content');
+                        maybeRender(data);
+                      }
+                    } catch(e) {
+                      console.log('>>> ERROR LOADING MASTER - Showing own content');
+                      maybeRender(data);
+                    }
+                  },
+                  function(error) {
+                    console.log('>>> FAILED TO LOAD MASTER - Showing own content');
+                    maybeRender(data);
+                  }
+                );
+              } else {
+                // Check for combined display layout (fetch settings from DB)
+                checkAndLoadCombinedIfNeeded(data).then(function(success) {
+                  if (!success) {
+                    console.log('>>> RENDERING EVENTS (registered)');
+                    document.body.classList.remove('combined-mode');
+                    var combinedContainer = document.getElementById('combined-display');
+                    if (combinedContainer) combinedContainer.className = '';
+                    maybeRender(data);
+                  }
+                }).catch(function(error) {
+                  console.log('>>> COMBINED DISPLAY ERROR - Showing single rink');
+                  document.body.classList.remove('combined-mode');
+                  maybeRender(data);
+                });
+              }
+            }).catch(function(error) {
+              console.log('>>> ERROR CHECKING GROUP - Showing own content');
+              maybeRender(data);
+            });
+          } else {
+            // Check for combined display layout (fetch settings from DB)
+            checkAndLoadCombinedIfNeeded(data).then(function(success) {
+              if (!success) {
+                console.log('>>> RENDERING EVENTS (registered)');
+                document.body.classList.remove('combined-mode');
+                var combinedContainer = document.getElementById('combined-display');
+                if (combinedContainer) combinedContainer.className = '';
+                maybeRender(data);
+              }
+            }).catch(function(error) {
+              console.log('>>> COMBINED DISPLAY ERROR - Showing single rink');
+              document.body.classList.remove('combined-mode');
+              maybeRender(data);
+            });
+          }
         }, 
         function(error){
           console.log('API call failed:', error);
@@ -1713,6 +2359,11 @@
       
       if (needsRerender) {
         renderFromPayload(state.lastPayload);
+      }
+
+      // Also update combined display if active
+      if (state.combinedLayout && state.combinedRinks && state.combinedRinks.length > 0) {
+        updateCombinedDisplay();
       }
     }
     
