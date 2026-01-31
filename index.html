@@ -949,6 +949,14 @@
         state.combinedLayout = data.layout;
         state.combinedRinks = data.combined_rinks;
 
+        // Apply theme from primary rink
+        if (data.theme) {
+          applyTheme(data.theme);
+        }
+        if (data.font_scale) {
+          applyFontScale(data.font_scale);
+        }
+
         renderCombinedDisplay(data.layout, data.combined_rinks);
         return true;
       }
@@ -1201,6 +1209,14 @@
 
       state.combinedLayout = layout;
       state.combinedRinks = rinkDataArray;
+
+      // Apply theme from primary rink
+      if (primaryData.theme) {
+        applyTheme(primaryData.theme);
+      }
+      if (primaryData.font_scale) {
+        applyFontScale(primaryData.font_scale);
+      }
 
       renderCombinedDisplay(layout, rinkDataArray);
       return true;
