@@ -622,6 +622,7 @@
     .rink-panel .live-pill {
       font-size: calc(2.2vh * var(--font-scale));
       padding: 0.6vh 1.2vh;
+      background: var(--theme-live-badge);
     }
 
     .rink-panel-empty {
@@ -951,7 +952,14 @@
 
         // Apply theme from primary rink
         if (data.theme) {
-          applyTheme(data.theme);
+          var theme = data.theme;
+          if (!theme.live_badge && data.theme_live_badge) {
+            theme.live_badge = data.theme_live_badge;
+          }
+          if (!theme.progress_bar && data.theme_progress_bar) {
+            theme.progress_bar = data.theme_progress_bar;
+          }
+          applyTheme(theme);
         }
         if (data.font_scale) {
           applyFontScale(data.font_scale);
@@ -1212,7 +1220,14 @@
 
       // Apply theme from primary rink
       if (primaryData.theme) {
-        applyTheme(primaryData.theme);
+        var theme = primaryData.theme;
+        if (!theme.live_badge && primaryData.theme_live_badge) {
+          theme.live_badge = primaryData.theme_live_badge;
+        }
+        if (!theme.progress_bar && primaryData.theme_progress_bar) {
+          theme.progress_bar = primaryData.theme_progress_bar;
+        }
+        applyTheme(theme);
       }
       if (primaryData.font_scale) {
         applyFontScale(primaryData.font_scale);
@@ -1263,12 +1278,30 @@
       panel.className = 'rink-panel';
       panel.id = 'rink-panel-' + index;
 
+      // Get theme colors for this rink (with fallbacks)
+      var theme = rinkData.theme || {};
+      var colors = {
+        bg: theme.bg_color || '#0a0a0a',
+        headerBg: theme.header_bg || 'rgba(0,0,0,0.3)',
+        accent: theme.accent || '#f77436',
+        eventText: theme.event_text || '#ffffff',
+        timeText: theme.time_text || '#dddddd',
+        roomText: theme.room_text || '#cccccc',
+        liveBadge: theme.live_badge || '#f77436',
+        liveBg: theme.live_bg || 'rgba(31,18,10,0.8)',
+        progressBar: theme.progress_bar || '#f77436'
+      };
+
+      // Apply background color to panel
+      panel.style.background = colors.bg;
+
       var now = new Date();
       var events = filterActiveEvents(rinkData.events || [], now);
 
       // Panel header
       var header = document.createElement('div');
       header.className = 'rink-panel-header';
+      header.style.background = colors.headerBg;
 
       var headerLeft = document.createElement('div');
       headerLeft.className = 'rink-panel-header-left';
@@ -1285,9 +1318,7 @@
       var title = document.createElement('div');
       title.className = 'rink-panel-title';
       title.textContent = rinkData.rink_title || 'Rink';
-      if (rinkData.theme && rinkData.theme.accent) {
-        title.style.color = rinkData.theme.accent;
-      }
+      title.style.color = colors.accent;
       headerLeft.appendChild(title);
 
       header.appendChild(headerLeft);
@@ -1298,6 +1329,7 @@
         clock.className = 'rink-panel-clock';
         clock.id = 'combined-clock';
         clock.textContent = fmtClock(new Date());
+        clock.style.color = colors.timeText;
         header.appendChild(clock);
       }
 
@@ -1308,7 +1340,7 @@
         var eventsContainer = document.createElement('div');
         eventsContainer.className = 'rink-panel-events';
 
-        var html = '<div class="event-header">'
+        var html = '<div class="event-header" style="color:' + colors.roomText + ';">'
                  + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell time">Time</div>'
                  + '<div class="event-cell room">Room</div>'
@@ -1341,11 +1373,25 @@
             }
           }
 
-          html += '<div class="event-row' + (isLive ? ' live' : '') + '">'
-               + '<div class="event-cell">' + teams + (isLive ? ' <span class="live-pill">LIVE</span>' : '') + '</div>'
-               + '<div class="event-cell time">' + timeStr + '</div>'
-               + '<div class="event-cell room">' + room + '</div>'
+          var livePillStyle = 'background:' + colors.liveBadge + ';';
+          var liveRowStyle = isLive ? 'background:' + colors.liveBg + ';' : '';
+
+          html += '<div class="event-row' + (isLive ? ' live' : '') + '" style="' + liveRowStyle + '">'
+               + '<div class="event-cell" style="color:' + colors.eventText + ';">' + teams + (isLive ? ' <span class="live-pill" style="' + livePillStyle + '">LIVE</span>' : '') + '</div>'
+               + '<div class="event-cell time" style="color:' + colors.timeText + ';">' + timeStr + '</div>'
+               + '<div class="event-cell room" style="color:' + colors.roomText + ';">' + room + '</div>'
                + '</div>';
+
+          // Add progress bar for live events
+          if (isLive && times.start && times.end) {
+            var sMs = times.start.getTime();
+            var eMs = times.end.getTime();
+            var pct = Math.round(((n - sMs) / (eMs - sMs)) * 100);
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            html += '<div class="progress" data-start="' + sMs + '" data-end="' + eMs + '">'
+                 + '<div class="progress-fill" style="width:' + pct + '%;background:' + colors.progressBar + ';"></div></div>';
+          }
         }
 
         eventsContainer.innerHTML = html;
@@ -2216,13 +2262,21 @@
     
     function maybeRender(data){
       var sig = signatureFromData(data);
-      
+
       state.lastPayload = data;
-      
+
       if (data && data.theme) {
-        applyTheme(data.theme);
-        state.currentTheme = data.theme;
-        setCacheWithExpiry('theme_' + state.screenCode, data.theme);
+        // Ensure live_badge and progress_bar are included (may come from API at top level)
+        var theme = data.theme;
+        if (!theme.live_badge && data.theme_live_badge) {
+          theme.live_badge = data.theme_live_badge;
+        }
+        if (!theme.progress_bar && data.theme_progress_bar) {
+          theme.progress_bar = data.theme_progress_bar;
+        }
+        applyTheme(theme);
+        state.currentTheme = theme;
+        setCacheWithExpiry('theme_' + state.screenCode, theme);
       }
       
       if (data && data.font_scale) {
