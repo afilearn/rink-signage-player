@@ -289,6 +289,10 @@
       font-weight: 700;
     }
 
+    .rink-panel .live {
+      background: transparent;
+    }
+
     .live .live-pill {
       display: inline-block;
       margin-left: 1vw;
@@ -1373,7 +1377,9 @@
           }
 
           var livePillStyle = 'background:' + colors.liveBadge + ';';
-          var liveRowStyle = isLive ? 'background:' + colors.liveBg + ';border-bottom-color:' + colors.liveBadge + ';' : '';
+          // Skip live background if it's the old orange default from API
+          var skipLiveBg = !theme.live_bg || theme.live_bg === 'rgba(31,18,10,0.8)';
+          var liveRowStyle = isLive ? (skipLiveBg ? '' : 'background:' + colors.liveBg + ';') + 'border-bottom-color:' + colors.liveBadge + ';' : '';
 
           html += '<div class="event-row' + (isLive ? ' live' : '') + '" style="' + liveRowStyle + '">'
                + '<div class="event-cell" style="color:' + colors.eventText + ';">' + teams + (isLive ? ' <span class="live-pill" style="' + livePillStyle + '">LIVE</span>' : '') + '</div>'
