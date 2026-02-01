@@ -2641,8 +2641,8 @@
       sendHeartbeat(); // Immediate first ping
       setInterval(sendHeartbeat, CONFIG.HEARTBEAT_INTERVAL);
       
-      updateClock(); 
-      setInterval(updateClock, 10000);
+      updateClock();
+      setInterval(updateClock, 1000);
       setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
       
       setInterval(checkEventStatus, 1000);
@@ -2656,6 +2656,8 @@
       scheduleNightlyRefresh();
     }
     
+    // Cancel any existing animation frame before starting new loop
+    if (TICKER.animFrame) cancelAnimationFrame(TICKER.animFrame);
     animationLoop(performance.now());
   })();
   </script>
