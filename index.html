@@ -416,15 +416,25 @@
       font-weight: 300; 
     }
 
-    #ticker { 
+    #ticker {
+      height: 0;
+      min-height: 0;
+      border-top: none;
+      background: var(--theme-ticker-bg);
+      overflow: hidden;
+      box-shadow: none;
+      display: none;
+      align-items: center;
+      padding: 0;
+      transition: height 0.3s ease, padding 0.3s ease;
+    }
+
+    #ticker.active {
       height: 8vh;
       min-height: 60px;
-      border-top: 0.4vh solid rgba(255,255,255,0.1); 
-      background: var(--theme-ticker-bg);
-      overflow: hidden; 
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.3); 
+      border-top: 0.4vh solid rgba(255,255,255,0.1);
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
       display: flex;
-      align-items: center;
       padding: 1vh 0;
     }
     
@@ -460,17 +470,6 @@
       background: #ff4444; 
     }
     
-    #platform-indicator { 
-      position: fixed; 
-      bottom: 1vh; 
-      right: 1vw; 
-      font-size: calc(2vh * var(--font-scale)); 
-      color: #666; 
-      background: rgba(0,0,0,0.7); 
-      padding: 0.5vh 1vw; 
-      border-radius: 1vh; 
-      z-index: 1000; 
-    }
 
     .theme-preview-badge {
       position: fixed;
@@ -491,6 +490,28 @@
       0% { opacity: 0.9; }
       50% { opacity: 1; }
       100% { opacity: 0.9; }
+    }
+
+    /* Loading spinner */
+    .loading-spinner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+
+    .spinner-ring {
+      width: 5vh;
+      height: 5vh;
+      border: 0.4vh solid rgba(255,255,255,0.1);
+      border-top-color: var(--theme-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     @media (max-width: 1200px) {
@@ -672,7 +693,6 @@
 <body>
   <div id="network-status" title="Network Status"></div>
   <div id="realtime-status">●</div>
-  <div id="platform-indicator">Detecting...</div>
   
   <div id="header" class="safe">
     <div id="header-left">
@@ -714,7 +734,11 @@
   </div>
   
   <div id="event-screen">
-    <div class="event-only" id="events">Loading events...</div>
+    <div class="event-only" id="events">
+      <div class="loading-spinner">
+        <div class="spinner-ring"></div>
+      </div>
+    </div>
   </div>
   
   <div id="empty-screen">
@@ -1912,18 +1936,18 @@
       TICKER.w = rect.width || track.scrollWidth || track.offsetWidth || (TICKER.text.length * 12); 
     }
     
-    function applyTicker(){ 
+    function applyTicker(){
       var holder = document.getElementById('ticker');
-      var track = document.getElementById('ticker-track'); 
-      if (!holder || !track) return; 
-      
-      if (!TICKER.text){ 
-        holder.style.display = 'none'; 
-        return; 
-      } 
-      
-      holder.style.display = 'block'; 
-      track.textContent = TICKER.text; 
+      var track = document.getElementById('ticker-track');
+      if (!holder || !track) return;
+
+      if (!TICKER.text){
+        holder.classList.remove('active');
+        return;
+      }
+
+      holder.classList.add('active');
+      track.textContent = TICKER.text;
       measureTicker(); 
       
       if (TICKER.x === 0) TICKER.x = TICKER.holderW; 
@@ -1959,7 +1983,7 @@
       var track = document.getElementById('ticker-track'); 
       var holder = document.getElementById('ticker');
       
-      if (TICKER.text && track && holder && holder.style.display !== 'none'){ 
+      if (TICKER.text && track && holder && holder.classList.contains('active')){ 
         TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
         if (TICKER.x + TICKER.w + TICKER.holderW < 0) TICKER.x = TICKER.holderW; 
         track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
