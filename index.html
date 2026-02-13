@@ -293,14 +293,21 @@
       padding: 0 2vw; 
     }
     
-    .event-cell.time { 
-      text-align: center; 
-      font-variant-numeric: tabular-nums; 
+    .event-cell.time {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event-cell.room {
+      text-align: right;
+    }
+
+    /* Only apply data colors to event rows, not the header */
+    .event-row .event-cell.time {
       color: var(--theme-time-text);
     }
-    
-    .event-cell.room { 
-      text-align: right; 
+
+    .event-row .event-cell.room {
       color: var(--theme-room-text);
     }
 
@@ -662,7 +669,7 @@
     .rink-panel .event-header {
       font-size: calc(2.4vh * var(--font-scale));
       padding: 1.2vh 1vw;
-      border-bottom: 0.3vh solid var(--theme-accent);
+      border-bottom: none;
     }
 
     .rink-panel .event-row {
@@ -1397,7 +1404,7 @@
         var eventsContainer = document.createElement('div');
         eventsContainer.className = 'rink-panel-events';
 
-        var html = '<div class="event-header" style="color:' + colors.roomText + ';">'
+        var html = '<div class="event-header" style="color:' + colors.roomText + '; border-bottom: 0.3vh solid ' + colors.accent + ';">'
                  + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell time">Time</div>'
                  + '<div class="event-cell room">Room</div>'
