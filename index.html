@@ -23,7 +23,12 @@
       --theme-ticker-text: #dddddd;
     }
     
-    * {
+    /* GPU acceleration only on animated elements */
+    #ticker-track,
+    .progress-fill,
+    .event-row,
+    .spinner-ring,
+    .event-only {
       -webkit-transform: translateZ(0);
       -webkit-backface-visibility: hidden;
     }
