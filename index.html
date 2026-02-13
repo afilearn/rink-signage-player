@@ -115,15 +115,29 @@
       min-width: max-content;
     }
 
+    /* Screen fade transitions */
+    #code-screen,
+    #event-screen,
+    #empty-screen {
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    #code-screen.visible,
+    #event-screen.visible,
+    #empty-screen.visible {
+      opacity: 1;
+    }
+
     /* Pairing screen - Samsung style */
-    #code-screen { 
-      flex: 1; 
-      display: flex; 
-      flex-direction: column; 
-      align-items: center; 
-      justify-content: center; 
-      text-align: center; 
-      gap: 5vh; 
+    #code-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 5vh;
       background: linear-gradient(135deg, #3d5875 0%, #2c3e50 100%);
       padding: 4vh 2vw;
     }
@@ -247,15 +261,19 @@
       align-items: center; 
     }
     
-    .event-header { 
-      position: sticky; 
-      top: 0; 
-      z-index: 10; 
-      font-weight: 600; 
-      background: rgba(13,13,13,0.95);
-      color: #cfcfcf; 
-      border-top: 0.4vh solid rgba(255,255,255,0.05); 
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+    .event-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      font-weight: 600;
+      background: rgba(13,13,13,0.97);
+      color: rgba(255,255,255,0.5);
+      font-size: calc(2.8vh * var(--font-scale));
+      text-transform: uppercase;
+      letter-spacing: 0.15vh;
+      border-bottom: 0.4vh solid var(--theme-accent);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      padding: 1.8vh 1vw;
     }
     
     .event-row { 
@@ -363,55 +381,57 @@
       animation: fadeOutSlide 0.5s ease-out forwards;
     }
 
-    #empty-screen { 
-      display: none; 
-      flex: 1; 
-      align-items: center; 
-      justify-content: center; 
-      flex-direction: column; 
-      gap: 3vh; 
-      text-align: center; 
-      padding: 0 2vw; 
-      box-sizing: border-box; 
-      background: rgba(255,255,255,0.02);
+    #empty-screen {
+      display: none;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 4vh;
+      text-align: center;
+      padding: 0 2vw;
+      box-sizing: border-box;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.04) 0%, transparent 70%);
     }
-    
+
     #empty-logo {
-      height: 22vh;
+      height: 30vh;
       width: auto;
-      max-width: 50vh;
-      border-radius: 2vh;
+      max-width: 60vh;
+      border-radius: 2.5vh;
       object-fit: contain;
-      padding: 2vh;
+      padding: 3vh;
       box-sizing: border-box;
       background: #fff;
       display: none;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.4);
     }
-    
-    #empty-title { 
-      font-size: calc(4.6vh * var(--font-scale)); 
-      font-weight: 600; 
-      letter-spacing: 0.3vh; 
-      text-transform: uppercase; 
-      max-width: 90vw; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      display: none; 
-      color: var(--theme-event-text);
+
+    #empty-title {
+      font-size: calc(5vh * var(--font-scale));
+      font-weight: 700;
+      letter-spacing: 0.4vh;
+      text-transform: uppercase;
+      max-width: 90vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: none;
+      color: var(--theme-accent);
     }
-    
-    #empty-status { 
-      font-size: calc(4vh * var(--font-scale)); 
-      color: #bbb; 
-      font-weight: 300; 
+
+    #empty-status {
+      font-size: calc(3.2vh * var(--font-scale));
+      color: rgba(255,255,255,0.4);
+      font-weight: 400;
+      letter-spacing: 0.1vh;
     }
-    
-    #empty-clock { 
-      font-size: calc(3.6vh * var(--font-scale)); 
-      color: var(--theme-time-text); 
-      margin-top: 1.5vh; 
-      font-weight: 300; 
+
+    #empty-clock {
+      font-size: calc(8vh * var(--font-scale));
+      color: var(--theme-time-text);
+      margin-top: 1vh;
+      font-weight: 200;
+      letter-spacing: 0.5vh;
     }
 
     #ticker {
@@ -636,8 +656,9 @@
     }
 
     .rink-panel .event-header {
-      font-size: calc(3.2vh * var(--font-scale));
-      padding: 1.5vh 1vw;
+      font-size: calc(2.4vh * var(--font-scale));
+      padding: 1.2vh 1vw;
+      border-bottom: 0.3vh solid var(--theme-accent);
     }
 
     .rink-panel .event-row {
@@ -1642,17 +1663,23 @@
       return (n < 10 ? '0' : '') + n; 
     }
     
-    function show(id){ 
-      var el = document.getElementById(id); 
-      if (!el) return; 
-      var disp = (id === 'code-screen' || id === 'empty-screen') ? 'flex' : 
-                 (id === 'header' ? 'grid' : 'block'); 
-      el.style.display = disp; 
+    function show(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      var disp = (id === 'code-screen' || id === 'empty-screen') ? 'flex' :
+                 (id === 'header' ? 'grid' : 'block');
+      el.style.display = disp;
+      // Trigger fade-in on next frame
+      requestAnimationFrame(function() {
+        el.classList.add('visible');
+      });
     }
-    
-    function hide(id){ 
-      var el = document.getElementById(id); 
-      if (el) el.style.display = 'none'; 
+
+    function hide(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('visible');
+      el.style.display = 'none';
     }
     
     function detectPlatform() {
