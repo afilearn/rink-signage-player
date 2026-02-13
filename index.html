@@ -116,10 +116,14 @@
     }
 
     /* Screen fade transitions */
-    #code-screen,
     #event-screen,
     #empty-screen {
       opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+
+    #code-screen {
+      opacity: 1;
       transition: opacity 0.4s ease;
     }
 
@@ -1669,9 +1673,11 @@
       var disp = (id === 'code-screen' || id === 'empty-screen') ? 'flex' :
                  (id === 'header' ? 'grid' : 'block');
       el.style.display = disp;
-      // Trigger fade-in on next frame
+      // Trigger fade-in on next frame so the browser registers the display change first
       requestAnimationFrame(function() {
-        el.classList.add('visible');
+        requestAnimationFrame(function() {
+          el.classList.add('visible');
+        });
       });
     }
 
@@ -1679,7 +1685,13 @@
       var el = document.getElementById(id);
       if (!el) return;
       el.classList.remove('visible');
-      el.style.display = 'none';
+      // For code-screen (starts visible), also force opacity to 0
+      el.style.opacity = '0';
+      // Hide after fade-out completes
+      setTimeout(function() {
+        el.style.display = 'none';
+        el.style.opacity = '';
+      }, 400);
     }
     
     function detectPlatform() {
