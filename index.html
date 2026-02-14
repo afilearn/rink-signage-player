@@ -2657,20 +2657,28 @@
     detectPlatform();
     state.screenCode = getOrCreateScreenCode();
     state.isRegistered = getRegistrationStatus();
-    
+
     console.log('==== INITIALIZATION ====');
     console.log('Screen code set to:', state.screenCode);
     console.log('Stored in localStorage:', getLocal('screen_uuid'));
     console.log('Registration status:', state.isRegistered);
-    
+
+    // If previously registered, skip the code screen and show loading spinner immediately
+    if (state.isRegistered) {
+      var cs = document.getElementById('code-screen');
+      if (cs) { cs.style.display = 'none'; cs.style.opacity = '0'; }
+      show('header');
+      show('event-screen');
+    }
+
     initSupabase();
-    
+
     loadCachedTheme();
-    
+
     if (isPreviewMode()) {
       applyPreviewTheme();
     } else {
-      var codeEl = document.getElementById('screen-code'); 
+      var codeEl = document.getElementById('screen-code');
       if (codeEl) codeEl.textContent = state.screenCode;
       
       // Simple heartbeat - only on actual screens (not preview)
