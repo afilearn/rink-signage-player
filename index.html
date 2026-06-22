@@ -770,6 +770,9 @@
     .step-url{ color:#ED2128 !important; }
     .event-row{ border-radius:12px; }
     .live .live-pill{ box-shadow:0 2px 12px rgba(0,0,0,0.35); }
+    /* time-first column rhythm */
+    .event-cell.time{ flex:0 0 30%; text-align:left; font-variant-numeric:tabular-nums; }
+    .event-cell.room{ flex:0 0 20%; text-align:right; }
 
     /* ---- PORTRAIT (panel rotated vertical) ---- */
     @media (orientation: portrait){
@@ -888,7 +891,9 @@
         PAUSE_TOP: 1500,
         PAUSE_BOTTOM: 3000
       },
-      TICKER_SPEED: 100
+      TICKER_SPEED: 100,
+      PAGE_INTERVAL: 8000,
+      PAGE_FADE: 400
     };
     
     var state = {
@@ -1492,8 +1497,8 @@
         eventsContainer.className = 'rink-panel-events';
 
         var html = '<div class="event-header" style="color:' + colors.roomText + '; border-bottom: 0.3vh solid ' + colors.accent + ';">'
-                 + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell time">Time</div>'
+                 + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell room">Room</div>'
                  + '</div>';
 
@@ -1530,8 +1535,8 @@
           var liveRowStyle = isLive ? (skipLiveBg ? '' : 'background:' + colors.liveBg + ';') + 'border-bottom-color:' + colors.liveBadge + ';' : '';
 
           html += '<div class="event-row' + (isLive ? ' live' : '') + '" style="' + liveRowStyle + '">'
-               + '<div class="event-cell" style="color:' + colors.eventText + ';">' + teams + (isLive ? ' <span class="live-pill" style="' + livePillStyle + '">LIVE</span>' : '') + '</div>'
                + '<div class="event-cell time" style="color:' + colors.timeText + ';">' + timeStr + '</div>'
+               + '<div class="event-cell" style="color:' + colors.eventText + ';">' + teams + (isLive ? ' <span class="live-pill" style="' + livePillStyle + '">LIVE</span>' : '') + '</div>'
                + '<div class="event-cell room" style="color:' + colors.roomText + ';">' + room + '</div>'
                + '</div>';
 
@@ -2288,8 +2293,8 @@
       
       if (events && events.length){
         var html = '<div class="event-header">'
-                 + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell time">Time</div>'
+                 + '<div class="event-cell">Event</div>'
                  + '<div class="event-cell room">Room</div>'
                  + '</div>';
         
@@ -2334,8 +2339,8 @@
           }
           
           html += '<div class="event-row' + (isLive ? ' live' : '') + '" data-end-time="' + (eMs || '') + '">'
-               +  '<div class="event-cell">' + teams + (isLive ? ' <span class="live-pill">LIVE</span>' : '') + '</div>'
                +  '<div class="event-cell time">' + (timeStr || '') + '</div>'
+               +  '<div class="event-cell">' + teams + (isLive ? ' <span class="live-pill">LIVE</span>' : '') + '</div>'
                +  '<div class="event-cell room">' + room + '</div>'
                +  '</div>';
           
@@ -2370,63 +2375,62 @@
     function startAutoScroll(){
       var el = document.getElementById('events');
       if (!el) return;
-      
       stopAutoScroll();
-      
-      if (el.scrollHeight <= el.clientHeight + 2){ 
-        el.scrollTop = 0; 
-        return; 
-      }
-      
+      el.scrollTop = 0;
       if (state.userInteracting) return;
-      
-      var step = CONFIG.SCROLL.SPEED;
-      var interval = CONFIG.SCROLL.INTERVAL;
-      var atBottomPause = CONFIG.SCROLL.PAUSE_BOTTOM;
-      var atTopPause = CONFIG.SCROLL.PAUSE_TOP;
-      var direction = 1;
-      
-      function begin(){ 
-        state.scrollTimer = setInterval(tick, interval);
-      }
-      
-      function tick(){
-        var maxScroll = el.scrollHeight - el.clientHeight;
-        el.scrollTop = el.scrollTop + step * direction;
-        
-        if (el.scrollTop >= maxScroll){
-          el.scrollTop = maxScroll;
-          clearInterval(state.scrollTimer);
-          state.scrollTimer = null;
-          state.scrollPause = setTimeout(function(){ 
-            direction = -1; 
-            begin(); 
-          }, atBottomPause);
-        } else if (el.scrollTop <= 0){
-          el.scrollTop = 0;
-          clearInterval(state.scrollTimer);
-          state.scrollTimer = null;
-          state.scrollPause = setTimeout(function(){ 
-            direction = 1; 
-            begin(); 
-          }, atTopPause);
+
+      // Snap page boundaries to whole rows so nothing gets cut in half
+      function buildPages(){
+        var header = el.querySelector('.event-header');
+        var headerH = header ? header.offsetHeight : 0;
+        var viewH = el.clientHeight - headerH;
+        var rows = el.querySelectorAll('.event-row');
+        var starts = [0];
+        if (el.scrollHeight <= el.clientHeight + 2 || rows.length === 0) return starts;
+        var cur = 0, guard = 0;
+        while (guard++ < 300){
+          var top = rows[cur].offsetTop;
+          var bottom = top + viewH;
+          var next = cur;
+          while (next < rows.length && (rows[next].offsetTop + rows[next].offsetHeight) <= bottom) next++;
+          if (next <= cur) next = cur + 1;          // single row taller than a page
+          if (next >= rows.length) break;
+          starts.push(Math.max(0, rows[next].offsetTop - headerH));
+          cur = next;
         }
+        return starts;
       }
-      
-      state.scrollPause = setTimeout(begin, atTopPause);
+
+      // Defer a frame so row heights (incl. live progress bars) are final
+      requestAnimationFrame(function(){
+        var starts = buildPages();
+        if (starts.length <= 1){ el.scrollTop = 0; return; }   // it all fits: no paging needed
+
+        state.pageStarts = starts;
+        state.pageIndex = 0;
+        var fade = CONFIG.PAGE_FADE;
+        el.style.transition = 'opacity ' + fade + 'ms ease';
+
+        state.pageTimer = setInterval(function(){
+          if (state.userInteracting) return;
+          el.style.opacity = '0';                              // fade out
+          setTimeout(function(){
+            state.pageIndex = (state.pageIndex + 1) % state.pageStarts.length;
+            el.scrollTop = state.pageStarts[state.pageIndex];  // jump a full page
+            el.style.opacity = '1';                            // fade in
+          }, fade);
+        }, CONFIG.PAGE_INTERVAL);
+      });
     }
-    
-    function stopAutoScroll(){ 
-      if (state.scrollTimer){ 
-        clearInterval(state.scrollTimer); 
-        state.scrollTimer = null; 
-      } 
-      if (state.scrollPause){ 
-        clearTimeout(state.scrollPause); 
-        state.scrollPause = null; 
-      } 
+
+    function stopAutoScroll(){
+      if (state.pageTimer){ clearInterval(state.pageTimer); state.pageTimer = null; }
+      if (state.scrollTimer){ clearInterval(state.scrollTimer); state.scrollTimer = null; }
+      if (state.scrollPause){ clearTimeout(state.scrollPause); state.scrollPause = null; }
+      var el = document.getElementById('events');
+      if (el){ el.style.opacity = '1'; }
     }
-    
+
     function setupEventListeners() {
       var eventsContainer = document.getElementById('events');
       if (eventsContainer) {
