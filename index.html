@@ -2108,7 +2108,7 @@
       if (!norm){ 
         if (TICKER.text){ 
           TICKER.emptyStreak++; 
-          if (TICKER.emptyStreak <= 3) return; 
+          if (TICKER.emptyStreak <= 1) return; 
         } 
         TICKER.text = ''; 
         TICKER.emptyStreak = 0; 
@@ -2489,6 +2489,7 @@
       }
       
       if (sig && sig === state.lastSignature){ 
+        updateTickerText((data && (data.announcement || data.ticker_text)) || '');
         updateLiveProgressBars(); 
         return; 
       }
