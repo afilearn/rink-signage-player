@@ -352,15 +352,20 @@
 
     .live .live-pill {
       display: inline-block;
-      margin-left: 1vw;
-      font-size: calc(2.4vh * var(--font-scale));
+      margin-left: 0.8vw;
+      font-size: calc(2.2vh * var(--font-scale));
       line-height: 1;
-      padding: 0.8vh 1.4vh;
+      padding: 0.7vh 1.3vh;
       background: var(--theme-live-badge);
       color: #1a0d08;
-      border-radius: 1.5vh;
-      vertical-align: middle;
+      border-radius: 999px;
+      vertical-align: baseline;
       font-weight: 700;
+      white-space: nowrap;
+    }
+    body.ads-active .live .live-pill {
+      font-size: calc(1.8vh * var(--font-scale));
+      padding: 0.5vh 1vh;
     }
     
     .progress { 
@@ -814,7 +819,9 @@
       width:30vw; height:100vh; background:#000; overflow:hidden;
       border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
-    #ad-video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+    #ad-column{ position:relative; background:#000; }
+    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; opacity:0; transition:opacity 0.25s ease; }
+    #ad-column video.showing{ opacity:1; }
     body.ads-active #header,
     body.ads-active #event-screen,
     body.ads-active #empty-screen,
@@ -910,8 +917,9 @@
 
   
   <div id="ad-column">
-    <video id="ad-video" muted playsinline webkit-playsinline autoplay preload="auto"></video>
-    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:contain;background:#000;" />
+    <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
+    <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
+    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;z-index:2;" />
   </div>
 <script>
   (function(){
@@ -2196,8 +2204,72 @@
     window.addEventListener('orientationchange', function(){ setTimeout(applyOrientation, 150); });
     window.addEventListener('resize', applyOrientation);
 
-    // ================= AD CAMPAIGN PLAYLIST =================
-    var ADS = { list: [], idx: 0, sig: '', imgTimer: null };
+    // ================= AD CAMPAIGN PLAYLIST (double-buffered) =================
+    // Two stacked <video> elements: the next ad preloads in the hidden one
+    // while the current plays; we crossfade on the 'playing' event so the
+    // WebView's grey play-button overlay is never visible between ads.
+    var ADS = { list: [], idx: 0, sig: '', imgTimer: null, active: null, swapping: false };
+
+    // Native ExoPlayer bridge (PostSignage Android APK). Hardware-decoded
+    // video + disk cache. Falls back to <video> double-buffering elsewhere.
+    function hasNativePlayer(){
+      try { return !!(window.NativePlayer && window.NativePlayer.isAvailable()); }
+      catch(e){ return false; }
+    }
+
+    function adColumnRect(){
+      var el = document.getElementById('ad-column');
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    }
+
+    function nativePlayCurrent(ad){
+      var r = adColumnRect();
+      if (!r || r.w < 2 || r.h < 2){ setTimeout(function(){ playCurrentAd(); }, 300); return; }
+      try {
+        window.NativePlayer.play(String(ad.id), ad.media_url, r.x, r.y, r.w, r.h, ADS.list.length === 1);
+        var nxt = adAt(1);
+        if (nxt && nxt.media_type !== 'image' && nxt.media_url !== ad.media_url){
+          window.NativePlayer.preload(nxt.media_url);
+        }
+      } catch(e){ setTimeout(nextAd, 3000); }
+    }
+
+    // Events from the native player
+    window.__nativePlayerEvent = function(id, ev){
+      if (!ADS.list.length) return;
+      if (ev === 'ended'){
+        var ad = adAt(0);
+        if (ad) reportPlay(ad.id);
+        nextAd();
+      } else if (ev === 'looped'){
+        var ad2 = adAt(0);
+        if (ad2) reportPlay(ad2.id);   // proof-of-play per loop of a single-ad rotation
+      } else if (ev === 'error'){
+        setTimeout(nextAd, 3000);      // skip broken file
+      }
+    };
+
+    // Keep the native surface aligned with the ad column on rotation/resize
+    (function(){
+      var t = null;
+      function sync(){
+        if (!hasNativePlayer() || !ADS.list.length) return;
+        var r = adColumnRect();
+        if (r) try { window.NativePlayer.setRect(r.x, r.y, r.w, r.h); } catch(e){}
+      }
+      window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(sync, 250); });
+      window.addEventListener('orientationchange', function(){ clearTimeout(t); t = setTimeout(sync, 400); });
+    })();
+
+    function adEls(){
+      return {
+        a: document.getElementById('ad-video-a'),
+        b: document.getElementById('ad-video-b'),
+        img: document.getElementById('ad-image')
+      };
+    }
 
     function adsSignature(list){
       var out = [];
@@ -2226,18 +2298,35 @@
       } catch(e){}
     }
 
+    function adAt(offset){
+      if (!ADS.list.length) return null;
+      return ADS.list[(ADS.idx + (offset || 0)) % ADS.list.length];
+    }
+
+    function stopAllAdMedia(){
+      if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
+      var els = adEls();
+      if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
+      [els.a, els.b].forEach(function(v){
+        if (!v) return;
+        try { v.pause(); v.removeAttribute('src'); v.load(); } catch(e){}
+        v.classList.remove('showing');
+        v.loop = false;
+      });
+      if (els.img) els.img.style.display = 'none';
+      ADS.active = null;
+      ADS.swapping = false;
+    }
+
     function updateAds(list){
       list = list || [];
       var sig = adsSignature(list);
-      var vid = document.getElementById('ad-video');
-      var img = document.getElementById('ad-image');
-      if (!vid || !img) return;
+      var els = adEls();
+      if (!els.a || !els.b || !els.img) return;
 
       if (list.length === 0){
         if (document.body) document.body.classList.remove('ads-active');
-        if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
-        try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch(e){}
-        img.style.display = 'none';
+        stopAllAdMedia();
         ADS.list = []; ADS.sig = ''; ADS.idx = 0;
         return;
       }
@@ -2248,36 +2337,74 @@
         ADS.sig = sig;
         ADS.list = buildRotation(list);
         ADS.idx = 0;
+        stopAllAdMedia();
         playCurrentAd();
       }
     }
 
+    function preloadNextInto(v){
+      var nxt = adAt(1);
+      if (!v || !nxt || nxt.media_type === 'image') return;
+      if (v.getAttribute('src') !== nxt.media_url){
+        try { v.setAttribute('src', nxt.media_url); v.load(); } catch(e){}
+      }
+    }
+
     function playCurrentAd(){
-      var vid = document.getElementById('ad-video');
-      var img = document.getElementById('ad-image');
-      if (!vid || !img || !ADS.list.length) return;
+      var els = adEls();
+      if (!els.a || !els.b || !ADS.list.length) return;
       if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
-      var ad = ADS.list[ADS.idx % ADS.list.length];
+      var ad = adAt(0);
+      if (!ad) return;
 
       if (ad.media_type === 'image'){
-        try { vid.pause(); } catch(e){}
-        vid.style.display = 'none';
-        img.src = ad.media_url;
-        img.style.display = 'block';
+        // Image ad: hide native surface / cover the videos with the image
+        if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
+        els.img.src = ad.media_url;
+        els.img.style.display = 'block';
+        try { if (ADS.active) ADS.active.pause(); } catch(e){}
         var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
         ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
-      } else {
-        img.style.display = 'none';
-        vid.style.display = 'block';
-        if (vid.getAttribute('src') !== ad.media_url){
-          vid.setAttribute('src', ad.media_url);
-          try { vid.load(); } catch(e){}
-        } else {
-          try { vid.currentTime = 0; } catch(e){}
-        }
-        var p = vid.play();
-        if (p && p.catch) p.catch(function(){});
+        // Preload the next video ad behind the image so it starts instantly
+        preloadNextInto(ADS.active === els.a ? els.b : els.a);
+        return;
       }
+
+      els.img.style.display = 'none';
+
+      // Android APK path: hardware-decoded native playback with disk cache.
+      if (hasNativePlayer()){
+        nativePlayCurrent(ad);
+        return;
+      }
+
+      // Single-ad rotation: just loop one element forever, zero gaps.
+      if (ADS.list.length === 1){
+        var v0 = ADS.active || els.a;
+        ADS.active = v0;
+        v0.loop = true;
+        if (v0.getAttribute('src') !== ad.media_url){
+          v0.setAttribute('src', ad.media_url);
+          try { v0.load(); } catch(e){}
+        }
+        var pv = v0.play();
+        if (pv && pv.catch) pv.catch(function(){});
+        return; // 'playing' listener reveals it
+      }
+
+      // Double-buffer swap: play into the element that is NOT showing.
+      var incoming = (ADS.active === els.a) ? els.b : els.a;
+      incoming.loop = false;
+      if (incoming.getAttribute('src') !== ad.media_url){
+        incoming.setAttribute('src', ad.media_url);
+        try { incoming.load(); } catch(e){}
+      } else {
+        try { incoming.currentTime = 0; } catch(e){}
+      }
+      ADS.swapping = true;
+      var p = incoming.play();
+      if (p && p.catch) p.catch(function(){});
+      // reveal + hide-old happens in the 'playing' listener below
     }
 
     function nextAd(){
@@ -2287,19 +2414,45 @@
     }
 
     (function(){
-      var vid = document.getElementById('ad-video');
-      if (!vid) return;
-      vid.addEventListener('ended', function(){
-        var ad = ADS.list[ADS.idx % ADS.list.length];
-        if (ad) reportPlay(ad.id);
-        nextAd();
-      });
-      vid.addEventListener('error', function(){ setTimeout(nextAd, 3000); }); // skip broken file
+      var els = adEls();
+      if (!els.a || !els.b) return;
+
+      function wire(v, other){
+        v.addEventListener('playing', function(){
+          // First decoded frame is ready: crossfade, never show the play overlay.
+          v.classList.add('showing');
+          if (ADS.active && ADS.active !== v){
+            var old = ADS.active;
+            old.classList.remove('showing');
+            setTimeout(function(){ try { old.pause(); } catch(e){} }, 300);
+          }
+          ADS.active = v;
+          ADS.swapping = false;
+          // Preload the following ad into the now-hidden element.
+          preloadNextInto(other);
+        });
+
+        v.addEventListener('ended', function(){
+          if (v !== ADS.active) return;
+          var ad = adAt(0);
+          if (ad) reportPlay(ad.id);
+          nextAd();
+        });
+
+        v.addEventListener('error', function(){
+          if (ADS.swapping || v === ADS.active) setTimeout(nextAd, 3000); // skip broken file
+        });
+      }
+      wire(els.a, els.b);
+      wire(els.b, els.a);
+
+      // Stall watchdog: if the active video freezes for 20s, move on.
       var lastT = 0, lastCheck = Date.now();
       setInterval(function(){
-        if (!ADS.list.length || vid.style.display === 'none' || vid.paused) return;
-        if (vid.currentTime === lastT && Date.now() - lastCheck > 20000){ nextAd(); lastCheck = Date.now(); }
-        else if (vid.currentTime !== lastT){ lastT = vid.currentTime; lastCheck = Date.now(); }
+        var v = ADS.active;
+        if (!ADS.list.length || !v || v.paused || v.loop) return;
+        if (v.currentTime === lastT && Date.now() - lastCheck > 20000){ nextAd(); lastCheck = Date.now(); }
+        else if (v.currentTime !== lastT){ lastT = v.currentTime; lastCheck = Date.now(); }
       }, 5000);
     })();
 
