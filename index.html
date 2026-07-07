@@ -803,9 +803,43 @@
       .rink-panel .event-header{ font-size:calc(2.8vw * var(--font-scale)); }
       .rink-panel .event-row{ font-size:calc(4vw * var(--font-scale)); }
     }
+
+    /* ============================================================
+       AD MODE — schedule 60% left, video ads 40% right, full height
+       ============================================================ */
+    #ad-column{ display:none; }
+    body.ads-active #app{
+      display:grid;
+      grid-template-columns: 60% 40%;
+      height:100vh;
+    }
+    body.ads-active #main-screen{ min-width:0; }
+    body.ads-active #ad-column{
+      display:block;
+      position:relative;
+      height:100vh;
+      background:#000;
+      overflow:hidden;
+      border-left:2px solid rgba(255,255,255,0.08);
+    }
+    #ad-video{
+      width:100%; height:100%;
+      object-fit:cover;
+      display:block;
+      background:#000;
+    }
+    /* portrait: stack instead — schedule on top 60%, ad below 40% */
+    @media (orientation: portrait){
+      body.ads-active #app{
+        grid-template-columns:1fr;
+        grid-template-rows: 60% 40%;
+      }
+      body.ads-active #ad-column{ height:100%; border-left:none; border-top:2px solid rgba(255,255,255,0.08); }
+    }
   </style>
 </head>
 <body>
+<div id="app">
   <!-- Loading overlay — covers everything until content is ready -->
   <div id="boot-overlay">
     <div class="boot-spinner"></div>
@@ -874,7 +908,12 @@
 
   <div id="ticker"><div id="ticker-track"></div></div>
 
-  <script>
+  
+  <div id="ad-column">
+    <video id="ad-video" muted playsinline webkit-playsinline autoplay preload="auto"></video>
+  </div>
+</div><!-- /#app -->
+<script>
   (function(){
     var CONFIG = {
       POLL_INTERVAL: 60000,
@@ -2157,6 +2196,68 @@
     window.addEventListener('orientationchange', function(){ setTimeout(applyOrientation, 150); });
     window.addEventListener('resize', applyOrientation);
 
+    // ================= VIDEO AD PLAYLIST =================
+    var ADS = { list: [], idx: 0, sig: '' };
+
+    function adsSignature(list){
+      var out = [];
+      for (var i = 0; i < list.length; i++) out.push(list[i].id + '@' + list[i].video_url);
+      return out.join('|');
+    }
+
+    function updateAds(list){
+      list = list || [];
+      var sig = adsSignature(list);
+      var vid = document.getElementById('ad-video');
+      if (!vid) return;
+
+      if (list.length === 0){
+        if (document.body) document.body.classList.remove('ads-active');
+        try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch(e){}
+        ADS.list = []; ADS.sig = ''; ADS.idx = 0;
+        return;
+      }
+
+      if (document.body) document.body.classList.add('ads-active');
+
+      if (sig !== ADS.sig){
+        ADS.list = list; ADS.sig = sig; ADS.idx = 0;
+        playCurrentAd();
+      }
+    }
+
+    function playCurrentAd(){
+      var vid = document.getElementById('ad-video');
+      if (!vid || !ADS.list.length) return;
+      var ad = ADS.list[ADS.idx % ADS.list.length];
+      if (vid.getAttribute('src') !== ad.video_url){
+        vid.setAttribute('src', ad.video_url);
+        try { vid.load(); } catch(e){}
+      }
+      var p = vid.play();
+      if (p && p.catch) p.catch(function(){ /* autoplay guard; muted so should succeed */ });
+    }
+
+    function nextAd(){
+      if (!ADS.list.length) return;
+      ADS.idx = (ADS.idx + 1) % ADS.list.length;   // loop back to first
+      playCurrentAd();
+    }
+
+    (function(){
+      var vid = document.getElementById('ad-video');
+      if (!vid) return;
+      vid.addEventListener('ended', nextAd);
+      vid.addEventListener('error', function(){ setTimeout(nextAd, 3000); }); // skip broken file
+      // stall watchdog: if a video freezes >20s without progress, advance
+      var lastT = 0, lastCheck = Date.now();
+      setInterval(function(){
+        if (!ADS.list.length || vid.paused) return;
+        if (vid.currentTime === lastT && Date.now() - lastCheck > 20000){ nextAd(); lastCheck = Date.now(); }
+        else if (vid.currentTime !== lastT){ lastT = vid.currentTime; lastCheck = Date.now(); }
+      }, 5000);
+    })();
+
     function signatureFromData(data){
       try{
         var raw = Array.isArray(data && data.events) ? data.events : [];
@@ -2490,11 +2591,13 @@
       
       if (sig && sig === state.lastSignature){ 
         updateTickerText((data && (data.announcement || data.ticker_text)) || '');
+        updateAds(data && data.ads);
         updateLiveProgressBars(); 
         return; 
       }
       
       state.lastSignature = sig;
+      updateAds(data && data.ads);
       setCacheWithExpiry('last_payload_' + state.screenCode, data);
       renderFromPayload(data);
     }
