@@ -805,41 +805,36 @@
     }
 
     /* ============================================================
-       AD MODE — schedule 60% left, video ads 40% right, full height
+       AD MODE - schedule 60% left, video ads 40% right, full height
        ============================================================ */
     #ad-column{ display:none; }
-    body.ads-active #app{
-      display:grid;
-      grid-template-columns: 60% 40%;
-      height:100vh;
-    }
-    body.ads-active #main-screen{ min-width:0; }
     body.ads-active #ad-column{
-      display:block;
-      position:relative;
-      height:100vh;
-      background:#000;
-      overflow:hidden;
-      border-left:2px solid rgba(255,255,255,0.08);
+      display:block; position:fixed; top:0; right:0;
+      width:40vw; height:100vh; background:#000; overflow:hidden;
+      border-left:2px solid rgba(255,255,255,0.08); z-index:50;
     }
-    #ad-video{
-      width:100%; height:100%;
-      object-fit:cover;
-      display:block;
-      background:#000;
-    }
-    /* portrait: stack instead — schedule on top 60%, ad below 40% */
+    #ad-video{ width:100%; height:100%; object-fit:cover; display:block; background:#000; }
+    body.ads-active #event-screen,
+    body.ads-active #empty-screen,
+    body.ads-active #combined-display,
+    body.ads-active #code-screen{ width:60vw; max-width:60vw; }
+    body.ads-active #ticker{ width:60vw; }
+
     @media (orientation: portrait){
-      body.ads-active #app{
-        grid-template-columns:1fr;
-        grid-template-rows: 60% 40%;
+      body.ads-active #ad-column{
+        top:auto; bottom:0; right:0; left:0;
+        width:100vw; height:40vh;
+        border-left:none; border-top:2px solid rgba(255,255,255,0.08);
       }
-      body.ads-active #ad-column{ height:100%; border-left:none; border-top:2px solid rgba(255,255,255,0.08); }
+      body.ads-active #event-screen,
+      body.ads-active #empty-screen,
+      body.ads-active #combined-display,
+      body.ads-active #code-screen{ width:100vw; max-width:100vw; height:60vh; }
+      body.ads-active #ticker{ width:100vw; bottom:40vh; }
     }
   </style>
 </head>
 <body>
-<div id="app">
   <!-- Loading overlay — covers everything until content is ready -->
   <div id="boot-overlay">
     <div class="boot-spinner"></div>
@@ -912,7 +907,6 @@
   <div id="ad-column">
     <video id="ad-video" muted playsinline webkit-playsinline autoplay preload="auto"></video>
   </div>
-</div><!-- /#app -->
 <script>
   (function(){
     var CONFIG = {
