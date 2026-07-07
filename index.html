@@ -15,6 +15,7 @@
       --theme-accent: #f77436;
       --theme-event-text: #ffffff;
       --theme-time-text: #dddddd;
+      --theme-clock-text: #dddddd;
       --theme-room-text: #cccccc;
       --theme-live-badge: #f77436;
       --theme-live-bg: rgba(0,0,0,0);
@@ -105,7 +106,8 @@
     
     #clock {
       font-size: calc(4.5vh * var(--font-scale));
-      color: var(--theme-time-text);
+      color: var(--theme-clock-text);
+      text-shadow: 0 1px 3px rgba(0,0,0,0.15);
       white-space: nowrap;
       text-align: right;
       font-weight: 700;
@@ -244,7 +246,7 @@
     
     #realtime-status {
       position: fixed;
-      top: 1vh;
+      bottom: 9vh;          /* above the ticker, never over the header/logo */
       left: 1vw;
       padding: 0.5vh 1vw;
       border-radius: 1vh;
@@ -257,7 +259,7 @@
     
     #realtime-status.connected {
       color: #19c37d;
-      display: block;
+      display: none;        /* healthy connection = invisible on signage */
     }
     
     #realtime-status.connecting {
@@ -1059,6 +1061,28 @@
         });
     }
 
+    // Picks a readable clock color for the header: if the header background
+    // is light and opaque enough, use near-black; otherwise the theme's
+    // time_text (made for dark backgrounds) is fine.
+    function contrastTextFor(bg, fallback){
+      try {
+        if (!bg) return fallback;
+        var rC, gC, bC, a = 1, m;
+        m = bg.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([0-9.]+))?\)/i);
+        if (m){ rC = +m[1]; gC = +m[2]; bC = +m[3]; a = m[4] === undefined ? 1 : +m[4]; }
+        else {
+          m = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+          if (!m) return fallback;
+          var hx = m[1];
+          if (hx.length === 3) hx = hx[0]+hx[0]+hx[1]+hx[1]+hx[2]+hx[2];
+          rC = parseInt(hx.substr(0,2),16); gC = parseInt(hx.substr(2,2),16); bC = parseInt(hx.substr(4,2),16);
+        }
+        if (a < 0.5) return fallback; // mostly transparent header: page bg dominates
+        var lum = (0.2126*rC + 0.7152*gC + 0.0722*bC) / 255;
+        return lum > 0.6 ? '#1a1a1a' : fallback;
+      } catch(e){ return fallback; }
+    }
+
     function applyTheme(theme) {
       if (!theme) return;
       
@@ -1073,6 +1097,7 @@
         :root {
           --theme-bg: ${theme.bg_color || '#0a0a0a'};
           --theme-header-bg: ${theme.header_bg || 'rgba(0,0,0,0.3)'};
+          --theme-clock-text: ${contrastTextFor(theme.header_bg, theme.time_text || '#dddddd')};
           --theme-accent: ${theme.accent || '#f77436'};
           --theme-event-text: ${theme.event_text || '#ffffff'};
           --theme-time-text: ${theme.time_text || '#dddddd'};
@@ -1532,7 +1557,7 @@
         clock.className = 'rink-panel-clock';
         clock.id = 'combined-clock';
         clock.textContent = fmtClock(new Date());
-        clock.style.color = colors.timeText;
+        clock.style.color = contrastTextFor(theme.header_bg, colors.timeText);
         header.appendChild(clock);
       }
 
