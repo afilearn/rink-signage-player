@@ -911,6 +911,7 @@
   
   <div id="ad-column">
     <video id="ad-video" muted playsinline webkit-playsinline autoplay preload="auto"></video>
+    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:contain;background:#000;" />
   </div>
 <script>
   (function(){
@@ -2195,24 +2196,48 @@
     window.addEventListener('orientationchange', function(){ setTimeout(applyOrientation, 150); });
     window.addEventListener('resize', applyOrientation);
 
-    // ================= VIDEO AD PLAYLIST =================
-    var ADS = { list: [], idx: 0, sig: '' };
+    // ================= AD CAMPAIGN PLAYLIST =================
+    var ADS = { list: [], idx: 0, sig: '', imgTimer: null };
 
     function adsSignature(list){
       var out = [];
-      for (var i = 0; i < list.length; i++) out.push(list[i].id + '@' + list[i].video_url);
+      for (var i = 0; i < list.length; i++) out.push(list[i].id + '@' + list[i].media_url + '@' + list[i].weight);
       return out.join('|');
+    }
+
+    // weight expansion: weight 2 => appears twice per rotation, interleaved
+    function buildRotation(list){
+      var rot = [], maxW = 1, i;
+      for (i = 0; i < list.length; i++) maxW = Math.max(maxW, Number(list[i].weight) || 1);
+      for (var pass = 0; pass < maxW; pass++){
+        for (i = 0; i < list.length; i++){
+          if ((Number(list[i].weight) || 1) > pass) rot.push(list[i]);
+        }
+      }
+      return rot;
+    }
+
+    function reportPlay(campaignId){
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', 'https://post-signage-api.abdullaafraz.workers.dev?id=' + encodeURIComponent(state.screenCode) + '&ad_play=1', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify({ campaign_id: campaignId }));
+      } catch(e){}
     }
 
     function updateAds(list){
       list = list || [];
       var sig = adsSignature(list);
       var vid = document.getElementById('ad-video');
-      if (!vid) return;
+      var img = document.getElementById('ad-image');
+      if (!vid || !img) return;
 
       if (list.length === 0){
         if (document.body) document.body.classList.remove('ads-active');
+        if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
         try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch(e){}
+        img.style.display = 'none';
         ADS.list = []; ADS.sig = ''; ADS.idx = 0;
         return;
       }
@@ -2220,21 +2245,39 @@
       if (document.body) document.body.classList.add('ads-active');
 
       if (sig !== ADS.sig){
-        ADS.list = list; ADS.sig = sig; ADS.idx = 0;
+        ADS.sig = sig;
+        ADS.list = buildRotation(list);
+        ADS.idx = 0;
         playCurrentAd();
       }
     }
 
     function playCurrentAd(){
       var vid = document.getElementById('ad-video');
-      if (!vid || !ADS.list.length) return;
+      var img = document.getElementById('ad-image');
+      if (!vid || !img || !ADS.list.length) return;
+      if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
       var ad = ADS.list[ADS.idx % ADS.list.length];
-      if (vid.getAttribute('src') !== ad.video_url){
-        vid.setAttribute('src', ad.video_url);
-        try { vid.load(); } catch(e){}
+
+      if (ad.media_type === 'image'){
+        try { vid.pause(); } catch(e){}
+        vid.style.display = 'none';
+        img.src = ad.media_url;
+        img.style.display = 'block';
+        var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
+        ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
+      } else {
+        img.style.display = 'none';
+        vid.style.display = 'block';
+        if (vid.getAttribute('src') !== ad.media_url){
+          vid.setAttribute('src', ad.media_url);
+          try { vid.load(); } catch(e){}
+        } else {
+          try { vid.currentTime = 0; } catch(e){}
+        }
+        var p = vid.play();
+        if (p && p.catch) p.catch(function(){});
       }
-      var p = vid.play();
-      if (p && p.catch) p.catch(function(){ /* autoplay guard; muted so should succeed */ });
     }
 
     function nextAd(){
@@ -2246,12 +2289,15 @@
     (function(){
       var vid = document.getElementById('ad-video');
       if (!vid) return;
-      vid.addEventListener('ended', nextAd);
+      vid.addEventListener('ended', function(){
+        var ad = ADS.list[ADS.idx % ADS.list.length];
+        if (ad) reportPlay(ad.id);
+        nextAd();
+      });
       vid.addEventListener('error', function(){ setTimeout(nextAd, 3000); }); // skip broken file
-      // stall watchdog: if a video freezes >20s without progress, advance
       var lastT = 0, lastCheck = Date.now();
       setInterval(function(){
-        if (!ADS.list.length || vid.paused) return;
+        if (!ADS.list.length || vid.style.display === 'none' || vid.paused) return;
         if (vid.currentTime === lastT && Date.now() - lastCheck > 20000){ nextAd(); lastCheck = Date.now(); }
         else if (vid.currentTime !== lastT){ lastT = vid.currentTime; lastCheck = Date.now(); }
       }, 5000);
