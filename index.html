@@ -822,7 +822,7 @@
       border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
     #ad-column{ position:relative; background:#000; }
-    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; opacity:0; transition:opacity 0.25s ease; }
+    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; background:#000; opacity:0; transition:opacity 0.25s ease; }
     #ad-column video.showing{ opacity:1; }
     body.ads-active #header,
     body.ads-active #event-screen,
@@ -921,7 +921,7 @@
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
-    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;z-index:2;" />
+    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:fill;background:#000;position:absolute;inset:0;z-index:2;" />
   </div>
 <script>
   (function(){
