@@ -2440,9 +2440,17 @@
 
     function preloadNextInto(v){
       var nxt = adAt(1);
-      if (!v || !nxt || nxt.media_type === 'image') return;
+      if (!nxt) return;
+      if (nxt.media_type === 'image'){
+        // warm the browser cache so image->image transitions have no decode gap
+        try { var pre = new Image(); pre.src = nxt.media_url; } catch(e){}
+        return;
+      }
+      if (!v) return;
       if (v.getAttribute('src') !== nxt.media_url){
         try { v.setAttribute('src', nxt.media_url); v.load(); } catch(e){}
+      } else if (v.ended || v.readyState === 0){
+        try { v.load(); } catch(e){} // finished last rotation: re-buffer now, not at swap time
       }
     }
 
@@ -2466,13 +2474,15 @@
         return;
       }
 
-      els.img.style.display = 'none';
-
       // Android APK path: hardware-decoded native playback with disk cache.
+      // (native surface sits above the WebView, so hide the image immediately)
       if (hasNativePlayer()){
+        els.img.style.display = 'none';
         nativePlayCurrent(ad);
         return;
       }
+      // Browser path: leave the image covering the videos until the incoming
+      // <video> fires 'playing' — the crossfade handler hides it then.
 
       // Single-ad rotation: just loop one element forever, zero gaps.
       if (ADS.list.length === 1){
@@ -2539,6 +2549,8 @@
           ADS.swapping = false;
           ADS.rescued = false;
           if (ADS.swapTimer){ clearTimeout(ADS.swapTimer); ADS.swapTimer = null; }
+          var imgEl = document.getElementById('ad-image');
+          if (imgEl) imgEl.style.display = 'none'; // image stays up until this first frame
           // Preload the following ad into the now-hidden element.
           preloadNextInto(other);
         });
