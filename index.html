@@ -2511,19 +2511,40 @@
         try { incoming.currentTime = 0; } catch(e){}
       }
       ADS.swapping = true;
-      var p = incoming.play();
-      if (p && p.catch) p.catch(function(){});
+      // webOS: play() before sufficient buffering shows a frame, stalls, and
+      // restarts decode (visible "replay"). Start only when ready; the element
+      // is hidden until 'playing' fires, so waiting costs nothing visually.
+      startWhenReady(incoming);
       // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
       if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
       ADS.swapTimer = setTimeout(function(){
         if (!ADS.swapping) return;
         if (!ADS.rescued){
           ADS.rescued = true;
-          try { incoming.load(); var p2 = incoming.play(); if (p2 && p2.catch) p2.catch(function(){}); } catch(e){}
+          try { incoming.load(); startWhenReady(incoming); } catch(e){}
           ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
         } else { ADS.rescued = false; nextAd(); }
       }, 5000);
       // reveal + hide-old happens in the 'playing' listener below
+    }
+
+    function startWhenReady(v){
+      function go(){
+        var p = v.play();
+        if (p && p.catch) p.catch(function(){});
+      }
+      if (v.readyState >= 3){ go(); return; }   // HAVE_FUTURE_DATA: safe to start
+      var fired = false;
+      function once(){
+        if (fired) return; fired = true;
+        v.removeEventListener('canplay', once);
+        v.removeEventListener('canplaythrough', once);
+        go();
+      }
+      v.addEventListener('canplay', once);
+      v.addEventListener('canplaythrough', once);
+      // belt-and-braces: if events never fire (some TV stacks), try anyway
+      setTimeout(once, 2500);
     }
 
     function nextAd(){
