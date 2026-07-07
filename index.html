@@ -765,10 +765,9 @@
         linear-gradient(160deg,#161616 0%,#0a0a0a 100%) !important;
     }
     #code-screen::before{
-      content:'arenasignage';
-      position:absolute; top:5vh; left:0; right:0; text-align:center;
-      font-weight:300; letter-spacing:-0.02em;
-      font-size:calc(3vh * var(--font-scale)); color:#fff; opacity:.92;
+      content:'';
+      position:absolute; top:5vh; left:0; right:0; height:6vh;
+      background:url('logo.png') no-repeat center / contain;
     }
     #code-screen h1{ color:rgba(255,255,255,0.55) !important; font-weight:500 !important; }
     #screen-code{ color:#ED2128 !important; text-shadow:0 0 40px rgba(237,33,40,0.35) !important; }
@@ -822,7 +821,7 @@
       border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
     #ad-column{ position:relative; background:#000; }
-    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:fill; background:#000; opacity:0; transition:opacity 0.25s ease; }
+    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; opacity:0; transition:opacity 0.25s ease; }
     #ad-column video.showing{ opacity:1; }
     body.ads-active #header,
     body.ads-active #event-screen,
@@ -846,6 +845,27 @@
       body.ads-active #ticker{ width:100vw; bottom:30vh; }
       body.ads-active #realtime-status{ right:1vw; }
     }
+
+    /* ---- Tomorrow preview (after 9pm, alternates with today) ---- */
+    #tomorrow-overlay{
+      display:none; position:absolute; inset:0; z-index:30;
+      background:var(--theme-bg, #0a0a0a); overflow:hidden;
+      padding:0 2vw;
+    }
+    body.show-tomorrow #tomorrow-overlay{ display:block; }
+    #tomorrow-overlay .tm-title{
+      font-weight:700; letter-spacing:0.1vw; margin:2vh 0 1vh;
+      font-size:calc(3.2vh * var(--font-scale)); color:var(--theme-accent, #f77436);
+      text-transform:uppercase;
+    }
+    #tomorrow-overlay .tm-row{
+      display:flex; gap:2vw; padding:1.4vh 1vw;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+      font-size:calc(2.8vh * var(--font-scale));
+    }
+    #tomorrow-overlay .tm-time{ flex:0 0 30%; color:var(--theme-time-text, #ddd); font-variant-numeric:tabular-nums; }
+    #tomorrow-overlay .tm-event{ flex:1; color:var(--theme-event-text, #fff); }
+    #tomorrow-overlay .tm-room{ flex:0 0 20%; text-align:right; color:var(--theme-room-text, #ccc); }
   </style>
 </head>
 <body>
@@ -896,6 +916,7 @@
   </div>
   
   <div id="event-screen">
+    <div id="tomorrow-overlay"></div>
     <div class="event-only" id="events">
       <div class="loading-spinner">
         <div class="spinner-ring"></div>
@@ -921,7 +942,7 @@
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
-    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:fill;background:#000;position:absolute;inset:0;z-index:2;" />
+    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:contain;background:#000;position:absolute;inset:0;z-index:2;" />
   </div>
 <script>
   (function(){
@@ -2229,6 +2250,56 @@
     window.addEventListener('orientationchange', function(){ setTimeout(applyOrientation, 150); });
     window.addEventListener('resize', applyOrientation);
 
+    // ================= TOMORROW PREVIEW (after 9pm) =================
+    // After 21:00 screen-local time, if tomorrow has bookings, alternate:
+    // 20s today's board / 10s tomorrow's board. Off during the day.
+    var TMR = { events: [], date: '', timer: null, showing: false };
+
+    function fmtTomorrowTitle(dateStr){
+      try {
+        var d = new Date(dateStr + 'T12:00:00');
+        var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var mons = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return 'Tomorrow \u2014 ' + days[d.getDay()] + ', ' + mons[d.getMonth()] + ' ' + d.getDate();
+      } catch(e){ return 'Tomorrow'; }
+    }
+
+    function renderTomorrow(){
+      var el = document.getElementById('tomorrow-overlay');
+      if (!el) return;
+      var html = '<div class="tm-title">' + fmtTomorrowTitle(TMR.date) + '</div>';
+      for (var i = 0; i < TMR.events.length && i < 12; i++){
+        var ev = TMR.events[i];
+        var t = (ev.start_time || '') + (ev.end_time ? ' - ' + ev.end_time : '');
+        html += '<div class="tm-row">'
+             +  '<div class="tm-time">' + t + '</div>'
+             +  '<div class="tm-event">' + String(ev.teams || '').replace(/</g,'&lt;') + '</div>'
+             +  '<div class="tm-room">' + String(ev.room || '').replace(/</g,'&lt;') + '</div>'
+             +  '</div>';
+      }
+      el.innerHTML = html;
+    }
+
+    function updateTomorrow(data){
+      TMR.events = (data && data.events_tomorrow) || [];
+      TMR.date = (data && data.tomorrow_date_local) || '';
+      var isEvening = false; // tomorrow-preview disabled per owner
+      var shouldCycle = isEvening && TMR.events.length > 0 && !state.combinedLayout;
+      function tmrTick(){
+        TMR.showing = !TMR.showing;
+        if (TMR.showing) renderTomorrow();
+        if (document.body) document.body.classList.toggle('show-tomorrow', TMR.showing);
+        clearTimeout(TMR.timer);
+        TMR.timer = setTimeout(tmrTick, TMR.showing ? 10000 : 20000); // 10s tomorrow, 20s today
+      }
+      if (shouldCycle && !TMR.timer){
+        TMR.timer = setTimeout(tmrTick, 20000);
+      } else if (!shouldCycle && TMR.timer){
+        clearTimeout(TMR.timer); TMR.timer = null; TMR.showing = false;
+        if (document.body) document.body.classList.remove('show-tomorrow');
+      }
+    }
+
     // ================= AD CAMPAIGN PLAYLIST (double-buffered) =================
     // Two stacked <video> elements: the next ad preloads in the hidden one
     // while the current plays; we crossfade on the 'playing' event so the
@@ -2815,12 +2886,14 @@
       if (sig && sig === state.lastSignature){ 
         updateTickerText((data && (data.announcement || data.ticker_text)) || '');
         updateAds(data && data.ads);
+        updateTomorrow(data);
         updateLiveProgressBars(); 
         return; 
       }
       
       state.lastSignature = sig;
       updateAds(data && data.ads);
+      updateTomorrow(data);
       setCacheWithExpiry('last_payload_' + state.screenCode, data);
       renderFromPayload(data);
     }
