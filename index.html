@@ -805,32 +805,37 @@
     }
 
     /* ============================================================
-       AD MODE - schedule 60% left, video ads 40% right, full height
+       AD MODE - schedule 70% left, video ads 30% right, full height
        ============================================================ */
     #ad-column{ display:none; }
     body.ads-active #ad-column{
-      display:block; position:fixed; top:0; right:0;
-      width:40vw; height:100vh; background:#000; overflow:hidden;
-      border-left:2px solid rgba(255,255,255,0.08); z-index:50;
+      display:flex; align-items:center; justify-content:center;
+      position:fixed; top:0; right:0;
+      width:30vw; height:100vh; background:#000; overflow:hidden;
+      border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
-    #ad-video{ width:100%; height:100%; object-fit:cover; display:block; background:#000; }
+    #ad-video{ width:100%; height:100%; object-fit:contain; display:block; background:#000; }
+    body.ads-active #header,
     body.ads-active #event-screen,
     body.ads-active #empty-screen,
     body.ads-active #combined-display,
-    body.ads-active #code-screen{ width:60vw; max-width:60vw; }
-    body.ads-active #ticker{ width:60vw; }
+    body.ads-active #code-screen{ width:70vw; max-width:70vw; }
+    body.ads-active #ticker{ width:70vw; }
+    body.ads-active #realtime-status{ right:31vw; }
 
     @media (orientation: portrait){
       body.ads-active #ad-column{
         top:auto; bottom:0; right:0; left:0;
-        width:100vw; height:40vh;
+        width:100vw; height:30vh;
         border-left:none; border-top:2px solid rgba(255,255,255,0.08);
       }
+      body.ads-active #header{ width:100vw; max-width:100vw; }
       body.ads-active #event-screen,
       body.ads-active #empty-screen,
       body.ads-active #combined-display,
-      body.ads-active #code-screen{ width:100vw; max-width:100vw; height:60vh; }
-      body.ads-active #ticker{ width:100vw; bottom:40vh; }
+      body.ads-active #code-screen{ width:100vw; max-width:100vw; height:70vh; }
+      body.ads-active #ticker{ width:100vw; bottom:30vh; }
+      body.ads-active #realtime-status{ right:1vw; }
     }
   </style>
 </head>
