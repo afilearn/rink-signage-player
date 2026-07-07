@@ -2494,12 +2494,25 @@
       if (incoming.getAttribute('src') !== ad.media_url){
         incoming.setAttribute('src', ad.media_url);
         try { incoming.load(); } catch(e){}
+      } else if (incoming.ended || incoming.readyState === 0){
+        // Replaying a finished element without load() renders black on many TV engines
+        try { incoming.load(); } catch(e){}
       } else {
         try { incoming.currentTime = 0; } catch(e){}
       }
       ADS.swapping = true;
       var p = incoming.play();
       if (p && p.catch) p.catch(function(){});
+      // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
+      if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
+      ADS.swapTimer = setTimeout(function(){
+        if (!ADS.swapping) return;
+        if (!ADS.rescued){
+          ADS.rescued = true;
+          try { incoming.load(); var p2 = incoming.play(); if (p2 && p2.catch) p2.catch(function(){}); } catch(e){}
+          ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
+        } else { ADS.rescued = false; nextAd(); }
+      }, 5000);
       // reveal + hide-old happens in the 'playing' listener below
     }
 
@@ -2524,6 +2537,8 @@
           }
           ADS.active = v;
           ADS.swapping = false;
+          ADS.rescued = false;
+          if (ADS.swapTimer){ clearTimeout(ADS.swapTimer); ADS.swapTimer = null; }
           // Preload the following ad into the now-hidden element.
           preloadNextInto(other);
         });
