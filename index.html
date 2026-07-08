@@ -503,7 +503,7 @@
       padding: 1vh 0;
     }
     
-    #ticker-track { 
+    #ticker-track { will-change: transform; 
       position: relative; 
       white-space: nowrap; 
       will-change: transform; 
@@ -2184,15 +2184,39 @@
 
       if (!TICKER.text){
         holder.classList.remove('active');
+        stopCssTicker();
         return;
       }
 
       holder.classList.add('active');
       track.textContent = TICKER.text;
       measureTicker(); 
-      
-      if (TICKER.x === 0) TICKER.x = TICKER.holderW; 
-      track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
+      startCssTicker(track);
+    }
+
+    // CSS-animated scroll: runs on the GPU compositor, so it stays smooth
+    // even while the panel's CPU is busy decoding ad video.
+    function startCssTicker(track){
+      var startX = Math.round(TICKER.holderW || 1920);
+      var endX = -Math.round(TICKER.w || 1000);
+      var dur = (startX - endX) / (CONFIG.TICKER_SPEED || 100); // px / (px per s)
+      var styleEl = document.getElementById('ticker-keyframes');
+      if (!styleEl){
+        styleEl = document.createElement('style');
+        styleEl.id = 'ticker-keyframes';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = '@keyframes asgTicker{from{transform:translate3d(' + startX +
+        'px,0,0)}to{transform:translate3d(' + endX + 'px,0,0)}}';
+      track.style.transform = '';
+      track.style.animation = 'none';
+      void track.offsetWidth; // reflow so the animation restarts with new keyframes
+      track.style.animation = 'asgTicker ' + dur.toFixed(2) + 's linear infinite';
+    }
+
+    function stopCssTicker(){
+      var track = document.getElementById('ticker-track');
+      if (track) track.style.animation = 'none';
     }
     
     function updateTickerText(newText){ 
@@ -2216,24 +2240,13 @@
       applyTicker(); 
     }
     
-    function animationLoop(ts){ 
-      if (!TICKER.lastTime) TICKER.lastTime = ts; 
-      var dt = ts - TICKER.lastTime; 
-      TICKER.lastTime = ts; 
-      
-      var track = document.getElementById('ticker-track'); 
-      var holder = document.getElementById('ticker');
-      
-      if (TICKER.text && track && holder && holder.classList.contains('active')){ 
-        TICKER.x -= (CONFIG.TICKER_SPEED * dt) / 1000; 
-        if (TICKER.x + TICKER.w + TICKER.holderW < 0) TICKER.x = TICKER.holderW; 
-        track.style.transform = 'translateX(' + Math.round(TICKER.x) + 'px)'; 
-      } 
-      
-      TICKER.animFrame = requestAnimationFrame(animationLoop); 
-    }
+    function animationLoop(){ /* retired: ticker now runs as a CSS animation (startCssTicker) */ }
     
-    window.addEventListener('resize', measureTicker);
+    window.addEventListener('resize', function(){
+      measureTicker();
+      var t = document.getElementById('ticker-track');
+      if (t && TICKER.text) startCssTicker(t);
+    });
 
     // ---- Orientation handling (portrait / landscape, e.g. LG rotated screens) ----
     function applyOrientation(){
