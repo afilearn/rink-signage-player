@@ -244,7 +244,8 @@
       margin-top: 0.5vh;
     }
     
-    #realtime-status {
+    #realtime-status { display:none !important; } /* status is for debugging; polling keeps data fresh */
+    #realtime-status-unused {
       position: fixed;
       bottom: 9vh;          /* above the ticker, never over the header/logo */
       left: 1vw;
@@ -845,6 +846,9 @@
       body.ads-active #ticker{ width:100vw; bottom:30vh; }
       body.ads-active #realtime-status{ right:1vw; }
     }
+
+    /* Combined display: only the first panel shows the TIME/EVENT/ROOM header */
+    #combined-display .rink-panel:not(:first-child) .event-header{ display:none; }
 
     /* ---- Tomorrow preview (after 9pm, alternates with today) ---- */
     #tomorrow-overlay{
