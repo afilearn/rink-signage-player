@@ -1214,6 +1214,12 @@
         }
 
         renderCombinedDisplay(data.layout, data.combined_rinks);
+
+        // Combined mode bypasses maybeRender, so run the shared per-poll
+        // updates here too: ads column, ticker text, live progress.
+        try { updateAds(data && data.ads); } catch(e){}
+        try { updateTickerText((data && (data.announcement || data.ticker_text)) || ''); } catch(e){}
+        try { updateLiveProgressBars(); } catch(e){}
         return true;
       }
 
