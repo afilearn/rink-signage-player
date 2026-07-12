@@ -940,6 +940,9 @@ window.ARENA_SIGNAGE_CONFIG = {
     var CONFIG = {
       POLL_INTERVAL: 60000,
       HEARTBEAT_INTERVAL: 30000,
+      WATCHDOG_INTERVAL: 5000,
+      FREEZE_THRESHOLD: 45000,
+      FREEZE_RECOVERY_HOLD: 30000,
       PROGRESS_UPDATE_INTERVAL: 2000,
       DEFAULT_EVENT_DURATION: 90,
       FORCE_12H_CLOCK: true,
@@ -977,6 +980,13 @@ window.ARENA_SIGNAGE_CONFIG = {
     var supabaseClient = null;
     var realtimeChannel = null;
     var currentRinkId = null;
+    var healthState = null;
+
+    function markContentHealthy() {
+      if (healthState && healthState.recoveryPending) {
+        healthState.contentHealthyAfterFreeze = true;
+      }
+    }
     
     function initSupabase() {
       if (typeof window.supabase === 'undefined') {
@@ -1042,7 +1052,7 @@ window.ARENA_SIGNAGE_CONFIG = {
           },
           function(payload) {
             console.log('Booking update received:', payload.eventType);
-            checkAndLoadEvents();
+            checkAndLoadEvents(true);
           }
         )
         .on(
@@ -1055,7 +1065,7 @@ window.ARENA_SIGNAGE_CONFIG = {
           },
           function(payload) {
             console.log('Rink update received:', payload.eventType);
-            checkAndLoadEvents();
+            checkAndLoadEvents(true);
           }
         )
         .subscribe(function(status) {
@@ -1254,7 +1264,6 @@ window.ARENA_SIGNAGE_CONFIG = {
 
             var xhr = new XMLHttpRequest();
             xhr.open('GET', apiUrl, true);
-            xhr.setRequestHeader('Cache-Control', 'no-cache');
             xhr.timeout = CONFIG.API_TIMEOUT;
 
             xhr.onreadystatechange = function() {
@@ -2091,7 +2100,6 @@ window.ARENA_SIGNAGE_CONFIG = {
         try{
           var x = new XMLHttpRequest();
           x.open('GET', url, true);
-          x.setRequestHeader('Cache-Control', 'no-cache');
           
           x.onreadystatechange = function(){
             if (x.readyState === 4){
@@ -2991,7 +2999,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     }
 
-    function checkAndLoadEvents(){
+    function checkAndLoadEvents(forceFresh){
       if (isPreviewMode()) {
         return;
       }
@@ -3001,14 +3009,16 @@ window.ARENA_SIGNAGE_CONFIG = {
       console.log('=== API CHECK ===');
       console.log('Current screen code:', state.screenCode);
       console.log('Stored in localStorage:', getLocal('screen_uuid'));
-      console.log('API URL:', buildApiUrl());
+      var requestUrl = buildApiUrl() + (forceFresh ? '&fresh=1' : '');
+      console.log('API URL:', requestUrl);
 
       xhrGetWithRetry(
-        buildApiUrl(),
+        requestUrl,
         function(txt){
           var data = null;
           try{
             data = JSON.parse(txt);
+            if (data) markContentHealthy();
           } catch(e){
             console.log('JSON parse error:', e);
           }
@@ -3238,48 +3248,89 @@ window.ARENA_SIGNAGE_CONFIG = {
       var codeEl = document.getElementById('screen-code');
       if (codeEl) codeEl.textContent = state.screenCode;
       
-      // Simple heartbeat - only on actual screens (not preview)
-      // Simple heartbeat - TV-compatible (uses XMLHttpRequest)
-      function sendHeartbeat() {
+      // Health heartbeat + event-loop freeze watchdog.
+      // A completely frozen JS engine cannot report while stalled, so the watchdog
+      // detects the long timer drift as soon as execution resumes, reports `frozen`,
+      // and reports `recovered` only after content has loaded successfully again.
+      healthState = {
+        freezeCount: Number(getLocal('freeze_count_' + state.screenCode) || 0),
+        lastWatchdogTick: Date.now(),
+        frozenAt: 0,
+        recoveryPending: false,
+        contentHealthyAfterFreeze: false
+      };
+
+      function sendHealthEvent(eventType, done) {
         if (!state.screenCode) return;
-        
         try {
           var xhr = new XMLHttpRequest();
           var url = buildApiUrl() + '&health=1';
           var payload = JSON.stringify({
             screen_code: state.screenCode,
             timestamp: new Date().toISOString(),
-            event_type: 'heartbeat'
+            event_type: eventType || 'heartbeat',
+            freeze_count: healthState.freezeCount
           });
-          
+
           xhr.open('POST', url, true);
           xhr.setRequestHeader('Content-Type', 'application/json');
-          xhr.timeout = 5000; // 5 second timeout
-          
+          xhr.timeout = 5000;
           xhr.onload = function() {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              console.log('Heartbeat sent successfully');
-            }
+            var ok = xhr.status >= 200 && xhr.status < 300;
+            if (!ok) console.log('Health event failed:', eventType, xhr.status);
+            if (done) done(ok);
           };
-          
-          xhr.onerror = function() {
-            console.log('Heartbeat failed (network error)');
-          };
-          
-          xhr.ontimeout = function() {
-            console.log('Heartbeat timeout');
-          };
-          
+          xhr.onerror = function() { if (done) done(false); };
+          xhr.ontimeout = function() { if (done) done(false); };
           xhr.send(payload);
         } catch(e) {
-          console.log('Heartbeat error:', e);
+          console.log('Health event error:', e);
+          if (done) done(false);
         }
       }
-      
-      // Send heartbeat every 30 seconds
-      sendHeartbeat(); // Immediate first ping
+
+      function sendHeartbeat() {
+        if (healthState.recoveryPending) {
+          var heldLongEnough = Date.now() - healthState.frozenAt >= CONFIG.FREEZE_RECOVERY_HOLD;
+          if (healthState.contentHealthyAfterFreeze && heldLongEnough) {
+            sendHealthEvent('recovered', function(ok) {
+              if (ok) {
+                healthState.recoveryPending = false;
+                healthState.contentHealthyAfterFreeze = false;
+              }
+            });
+          } else {
+            // Keep the admin status visibly frozen until a healthy content load occurs.
+            sendHealthEvent('frozen');
+          }
+          return;
+        }
+        sendHealthEvent('heartbeat');
+      }
+
+      function watchdogTick() {
+        var now = Date.now();
+        var elapsed = now - healthState.lastWatchdogTick;
+        healthState.lastWatchdogTick = now;
+
+        // Avoid false positives while a browser tab is intentionally backgrounded.
+        if (typeof document.hidden !== 'undefined' && document.hidden) return;
+
+        var drift = elapsed - CONFIG.WATCHDOG_INTERVAL;
+        if (drift > CONFIG.FREEZE_THRESHOLD && !healthState.recoveryPending) {
+          healthState.freezeCount += 1;
+          setLocal('freeze_count_' + state.screenCode, String(healthState.freezeCount));
+          healthState.frozenAt = now;
+          healthState.recoveryPending = true;
+          healthState.contentHealthyAfterFreeze = false;
+          sendHealthEvent('frozen');
+        }
+      }
+
+      sendHealthEvent('boot');
       setInterval(sendHeartbeat, CONFIG.HEARTBEAT_INTERVAL);
-      
+      setInterval(watchdogTick, CONFIG.WATCHDOG_INTERVAL);
+
       updateClock();
       setInterval(updateClock, 1000);
       setInterval(updateLiveProgressBars, CONFIG.PROGRESS_UPDATE_INTERVAL);
@@ -3302,4 +3353,3 @@ window.ARENA_SIGNAGE_CONFIG = {
   </script>
 </body>
 </html>
-
