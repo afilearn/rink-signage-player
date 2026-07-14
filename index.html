@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.4';
+    var PLAYER_VERSION = '1.3.5';
     var PLAYER_UPDATED_AT = '2026-07-14T03:30:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2494,11 +2494,37 @@ window.ARENA_SIGNAGE_CONFIG = {
     function captureDomScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
+        var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
+        var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
         window.html2canvas(document.body, {
-          backgroundColor: '#000000', logging: false, useCORS: true,
+          backgroundColor: '#000000',
+          logging: false,
+          useCORS: true,
           allowTaint: false,
-          width: window.innerWidth, height: window.innerHeight,
-          scale: Math.min(1, 1280 / Math.max(window.innerWidth, 1))
+          x: 0,
+          y: 0,
+          scrollX: 0,
+          scrollY: 0,
+          width: viewportWidth,
+          height: viewportHeight,
+          windowWidth: viewportWidth,
+          windowHeight: viewportHeight,
+          scale: Math.min(1, 1280 / viewportWidth),
+          onclone: function(clonedDocument){
+            /* html2canvas can render a fixed image/video layer at the wrong
+               scale or position. Keep the ad column's layout, but blank its
+               media in the cloned DOM. The active ad is composited exactly
+               once from the real page after the DOM capture completes. */
+            var clonedColumn = clonedDocument.getElementById('ad-column');
+            if (clonedColumn) clonedColumn.style.background = '#000000';
+            ['ad-image', 'ad-video-a', 'ad-video-b'].forEach(function(id){
+              var media = clonedDocument.getElementById(id);
+              if (!media) return;
+              media.style.setProperty('display', 'none', 'important');
+              media.style.setProperty('visibility', 'hidden', 'important');
+              media.style.setProperty('opacity', '0', 'important');
+            });
+          }
         }).then(function(canvas){
           return compositeAdIntoScreenshot(canvas);
         }).then(function(canvas){
@@ -3924,3 +3950,14 @@ window.ARENA_SIGNAGE_CONFIG = {
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
