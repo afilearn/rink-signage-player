@@ -1057,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.7';
-    var PLAYER_UPDATED_AT = '2026-07-14T13:30:00.000Z';
+    var PLAYER_VERSION = '1.3.8';
+    var PLAYER_UPDATED_AT = '2026-07-14T19:10:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2294,7 +2294,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       var osVersion = '';
       var browserName = 'Browser';
       var browserVersion = '';
-      if (window.AndroidBridge || hasNativePlayer()) platform = 'android_app';
+      if (window.AndroidBridge || window.PostSignageNative || hasNativePlayer()) platform = 'android_app';
       else if (lower.indexOf('webos') !== -1 || lower.indexOf('netcast') !== -1 || window.PalmServiceBridge) platform = 'lg_si';
       else if (lower.indexOf('tizen') !== -1 || window.tizen) platform = 'tizen';
       else if (lower.indexOf('android') !== -1) platform = 'android_browser';
@@ -2309,7 +2309,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       else if ((m = ua.match(/Version[\/ ]([\d.]+)/i))) { browserName = platform === 'lg_si' ? 'LG Browser' : 'WebKit'; browserVersion = m[1] || ''; }
       else if ((m = ua.match(/AppleWebKit[\/ ]([\d.]+)/i))) { browserName = 'WebKit'; browserVersion = m[1] || ''; }
 
-      var model = bridgeValue(window.AndroidBridge, 'getDeviceModel') || bridgeValue(window.NativePlayer, 'getDeviceModel');
+      var model = bridgeValue(window.PostSignageNative, 'getDeviceModel') || bridgeValue(window.AndroidBridge, 'getDeviceModel') || bridgeValue(window.NativePlayer, 'getDeviceModel');
       if (!model && platform === 'lg_si') {
         m = ua.match(/(?:model|LGTV)[\/\s:;-]*([A-Za-z0-9._-]+)/i);
         model = m ? m[1] : 'LG commercial display';
@@ -2335,11 +2335,102 @@ window.ARENA_SIGNAGE_CONFIG = {
       };
     }
 
+    function parseNativeCapabilities(value){
+      if (!value) return null;
+      if (typeof value === 'string') {
+        try { value = JSON.parse(value); } catch(e){ return null; }
+      }
+      return value && typeof value === 'object' ? value : null;
+    }
+
+    function nativeBridgeCandidates(){
+      var list = [];
+      function add(value){
+        if (!value) return;
+        for (var i=0; i<list.length; i++) if (list[i] === value) return;
+        list.push(value);
+      }
+      try { add(window.PostSignageNative); } catch(e){}
+      try { add(window.AndroidBridge); } catch(e){}
+      try { add(window.NativePlayer); } catch(e){}
+      return list;
+    }
+
+    function callBridgeMethod(bridge, name){
+      if (!bridge) return { called:false, value:null };
+      try {
+        // Android WebView JavascriptInterface methods are not reported as
+        // normal JavaScript functions on every WebView release. Attempt the
+        // method directly rather than relying only on typeof.
+        if (bridge[name] !== undefined && bridge[name] !== null) {
+          return { called:true, value:bridge[name]() };
+        }
+      } catch(e){
+        return { called:true, error:e, value:null };
+      }
+      return { called:false, value:null };
+    }
+
+    function nativeCapabilities(){
+      var caps = null;
+      try { caps = parseNativeCapabilities(window.__POSTSIGNAGE_NATIVE__); } catch(e){}
+      if (!caps) {
+        try { caps = parseNativeCapabilities(window.postSignageNativeCapabilities); } catch(e){}
+      }
+
+      var bridges = nativeBridgeCandidates();
+      for (var i=0; !caps && i<bridges.length; i++) {
+        var result = callBridgeMethod(bridges[i], 'getCapabilitiesJson');
+        if (!result.called) result = callBridgeMethod(bridges[i], 'getCapabilities');
+        caps = parseNativeCapabilities(result.value);
+      }
+
+      if (!caps) caps = {};
+      if (caps.screenshot_native !== true) {
+        for (var j=0; j<bridges.length; j++) {
+          var supported = callBridgeMethod(bridges[j], 'isNativeScreenshotSupported');
+          if (!supported.called) supported = callBridgeMethod(bridges[j], 'screenshotNative');
+          if (supported.called && (supported.value === true || String(supported.value).toLowerCase() === 'true')) {
+            caps.screenshot_native = true;
+            break;
+          }
+        }
+      }
+
+      if (caps.screenshot_native !== true) {
+        for (var k=0; k<bridges.length; k++) {
+          var b = bridges[k];
+          try {
+            if (b && (
+              b.captureScreenDataUrl !== undefined ||
+              b.captureScreenBase64 !== undefined ||
+              b.captureScreen !== undefined
+            )) {
+              caps.screenshot_native = true;
+              break;
+            }
+          } catch(e){}
+        }
+      }
+      return caps;
+    }
+
     function deviceCapabilities(){
+      var caps = nativeCapabilities();
+      var bridges = nativeBridgeCandidates();
+      var restart = false;
+      for (var i=0; i<bridges.length; i++) {
+        try {
+          if (bridges[i] && bridges[i].restartApp !== undefined) { restart = true; break; }
+        } catch(e){}
+      }
       return {
         reload: true,
-        restart_app: !!((window.AndroidBridge && typeof window.AndroidBridge.restartApp === 'function') || (window.NativePlayer && typeof window.NativePlayer.restartApp === 'function')),
-        screenshot_native: !!((window.AndroidBridge && typeof window.AndroidBridge.captureScreenBase64 === 'function') || (window.NativePlayer && typeof window.NativePlayer.captureScreen === 'function')),
+        restart_app: restart,
+        screenshot_native: caps.screenshot_native === true,
+        screenshot_method: caps.screenshot_method || '',
+        native_app_version: caps.app_version || '',
+        native_bridge_version: caps.bridge_version || '',
         screenshot_dom: typeof window.html2canvas === 'function'
       };
     }
@@ -2365,6 +2456,9 @@ window.ARENA_SIGNAGE_CONFIG = {
         network_rtt_ms: nd.network_rtt_ms,
         network_quality: nd.network_quality,
         capabilities: deviceCapabilities(),
+        screenshot_native: deviceCapabilities().screenshot_native,
+        screenshot_method: deviceCapabilities().screenshot_method || '',
+        native_app_version: deviceCapabilities().native_app_version || '',
         last_content_sync_at: deviceState.lastContentSyncAt,
         last_ad_campaign_id: deviceState.lastAdCampaignId,
         last_ad_name: deviceState.lastAdName
@@ -2407,18 +2501,58 @@ window.ARENA_SIGNAGE_CONFIG = {
 
     function captureNativeScreenshot(){
       return new Promise(function(resolve, reject){
-        try {
-          var value = null;
-          if (window.AndroidBridge && typeof window.AndroidBridge.captureScreenBase64 === 'function') value = window.AndroidBridge.captureScreenBase64();
-          else if (window.NativePlayer && typeof window.NativePlayer.captureScreen === 'function') value = window.NativePlayer.captureScreen();
-          else return reject(new Error('Native screenshot is not supported'));
-          if (value && typeof value.then === 'function') {
-            value.then(function(v){ var d = dataUrlFromNative(v); d ? resolve({ dataUrl:d, type:'native' }) : reject(new Error('Native capture returned no image')); }).catch(reject);
-          } else {
-            var dataUrl = dataUrlFromNative(value);
-            dataUrl ? resolve({ dataUrl:dataUrl, type:'native' }) : reject(new Error('Native capture returned no image'));
+        var bridges = nativeBridgeCandidates();
+        var methods = ['captureScreenDataUrl', 'captureScreenBase64', 'captureScreen'];
+        var finished = false;
+
+        function succeed(value){
+          if (finished) return true;
+          var dataUrl = dataUrlFromNative(value);
+          if (!dataUrl) return false;
+          finished = true;
+          var caps = nativeCapabilities();
+          resolve({
+            dataUrl: dataUrl,
+            type: 'native',
+            native_method: caps.screenshot_method || 'pixelcopy_window'
+          });
+          return true;
+        }
+
+        function tryCapture(attempt){
+          var lastError = null;
+          for (var i=0; i<bridges.length; i++) {
+            for (var j=0; j<methods.length; j++) {
+              var result = callBridgeMethod(bridges[i], methods[j]);
+              if (!result.called) continue;
+              if (result.error) {
+                lastError = result.error;
+                continue;
+              }
+              var value = result.value;
+              if (value && typeof value.then === 'function') {
+                value.then(function(v){
+                  if (!succeed(v) && !finished) reject(new Error('Native capture returned no image'));
+                }).catch(function(error){ if (!finished) reject(error); });
+                return;
+              }
+              if (succeed(value)) return;
+            }
           }
-        } catch(e){ reject(e); }
+
+          // MainActivity injects native capability metadata after page load.
+          // A command can arrive during that brief window, so retry once.
+          if (attempt < 1) {
+            setTimeout(function(){
+              bridges = nativeBridgeCandidates();
+              tryCapture(attempt + 1);
+            }, 350);
+            return;
+          }
+          reject(lastError || new Error('PixelCopy bridge returned no image'));
+        }
+
+        tryCapture(0);
       });
     }
 
@@ -2774,6 +2908,14 @@ window.ARENA_SIGNAGE_CONFIG = {
           .catch(function(){});
       } catch(e){}
     }
+
+    window.addEventListener('postsignage:native-ready', function(event){
+      try {
+        console.log('[native-bridge] ready', event && event.detail ? event.detail : '');
+        sendDeviceStatus();
+        pollRemoteCommand();
+      } catch(e){}
+    });
 
     window.addEventListener('error', function(event){
       reportPlayerError('javascript', event.message || 'JavaScript error', { file: event.filename || '', line: event.lineno || 0, column: event.colno || 0 });
