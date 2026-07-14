@@ -1057,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.6';
-    var PLAYER_UPDATED_AT = '2026-07-14T03:30:00.000Z';
+    var PLAYER_VERSION = '1.3.7';
+    var PLAYER_UPDATED_AT = '2026-07-14T13:30:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2485,6 +2485,78 @@ window.ARENA_SIGNAGE_CONFIG = {
       } catch(e){}
     }
 
+    function currentAdForCapture(){
+      try { return adAt(0); } catch(e){ return null; }
+    }
+
+    /* Native Android video is rendered by ExoPlayer above the WebView and is
+       therefore invisible to html2canvas. For screenshot proof, decode one
+       software frame through a temporary WebView <video>. This does not alter
+       the ad that is playing on the TV. */
+    function captureVideoFrameForScreenshot(url){
+      return new Promise(function(resolve, reject){
+        if (!url) return reject(new Error('No video URL'));
+        var video = document.createElement('video');
+        var finished = false;
+        var timer = null;
+        function cleanup(){
+          if (timer) clearTimeout(timer);
+          try { video.pause(); } catch(e){}
+          try { video.removeAttribute('src'); video.load(); } catch(e){}
+          if (video.parentNode) video.parentNode.removeChild(video);
+        }
+        function fail(message){
+          if (finished) return;
+          finished = true;
+          cleanup();
+          reject(new Error(message || 'Unable to decode video frame'));
+        }
+        function grab(){
+          if (finished || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
+          try {
+            var maxW = 960;
+            var scale = Math.min(1, maxW / video.videoWidth);
+            var frame = document.createElement('canvas');
+            frame.width = Math.max(2, Math.round(video.videoWidth * scale));
+            frame.height = Math.max(2, Math.round(video.videoHeight * scale));
+            var frameCtx = frame.getContext('2d');
+            frameCtx.drawImage(video, 0, 0, frame.width, frame.height);
+            finished = true;
+            cleanup();
+            resolve(frame);
+            return true;
+          } catch(e){ return false; }
+        }
+        function seekOrGrab(){
+          if (finished) return;
+          var target = 0;
+          if (isFinite(video.duration) && video.duration > 0.5) target = Math.min(1, Math.max(0.15, video.duration * 0.08));
+          if (target > 0 && Math.abs((video.currentTime || 0) - target) > 0.05) {
+            try { video.currentTime = target; return; } catch(e){}
+          }
+          setTimeout(function(){ if (!grab()) fail('Video frame was not available'); }, 120);
+        }
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.preload = 'auto';
+        video.crossOrigin = 'anonymous';
+        video.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:32px;height:32px;opacity:0.001;pointer-events:none;';
+        video.addEventListener('loadeddata', seekOrGrab);
+        video.addEventListener('seeked', function(){ setTimeout(function(){ if (!grab()) fail('Unable to copy decoded video frame'); }, 80); });
+        video.addEventListener('error', function(){ fail('WebView could not decode this video for screenshot'); });
+        document.body.appendChild(video);
+        video.src = mediaProxyUrl(url);
+        try { video.load(); } catch(e){}
+        try {
+          var playPromise = video.play();
+          if (playPromise && playPromise.catch) playPromise.catch(function(){});
+        } catch(e){}
+        timer = setTimeout(function(){ if (!grab()) fail('Timed out decoding video frame'); }, 6500);
+      });
+    }
+
     function compositeAdIntoScreenshot(canvas){
       return new Promise(function(resolve){
         try {
@@ -2514,11 +2586,20 @@ window.ARENA_SIGNAGE_CONFIG = {
           }
 
           var activeVideo = document.querySelector('#ad-column video.showing');
-          var videoDrawn = false;
-          if (activeVideo && activeVideo.readyState >= 2) {
-            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); videoDrawn = true; } catch(e){}
+          if (activeVideo && activeVideo.readyState >= 2 && activeVideo.videoWidth) {
+            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); return resolve(canvas); } catch(e){}
           }
-          if (!videoDrawn) drawProofFallback(ctx, dx, dy, dw, dh);
+
+          var currentAd = currentAdForCapture();
+          if (currentAd && currentAd.media_type !== 'image' && currentAd.media_url) {
+            captureVideoFrameForScreenshot(currentAd.media_url).then(function(frame){
+              try { drawCover(ctx, frame, dx, dy, dw, dh); } catch(e){ drawProofFallback(ctx, dx, dy, dw, dh); }
+              resolve(canvas);
+            }).catch(function(){ drawProofFallback(ctx, dx, dy, dw, dh); resolve(canvas); });
+            return;
+          }
+
+          drawProofFallback(ctx, dx, dy, dw, dh);
           resolve(canvas);
         } catch(e){ resolve(canvas); }
       });
@@ -2529,6 +2610,13 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
         var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
         var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
+        var liveAdColumn = document.getElementById('ad-column');
+        if (liveAdColumn) liveAdColumn.setAttribute('data-html2canvas-ignore', 'true');
+
+        function restoreAdColumn(){
+          if (liveAdColumn) liveAdColumn.removeAttribute('data-html2canvas-ignore');
+        }
+
         window.html2canvas(document.body, {
           backgroundColor: '#000000',
           logging: false,
@@ -2543,26 +2631,23 @@ window.ARENA_SIGNAGE_CONFIG = {
           windowWidth: viewportWidth,
           windowHeight: viewportHeight,
           scale: Math.min(1, 1280 / viewportWidth),
-          onclone: function(clonedDocument){
-            /* html2canvas can render a fixed image/video layer at the wrong
-               scale or position. Keep the ad column's layout, but blank its
-               media in the cloned DOM. The active ad is composited exactly
-               once from the real page after the DOM capture completes. */
-            var clonedColumn = clonedDocument.getElementById('ad-column');
-            if (clonedColumn) clonedColumn.style.background = '#000000';
-            ['ad-image', 'ad-video-a', 'ad-video-b'].forEach(function(id){
-              var media = clonedDocument.getElementById(id);
-              if (!media) return;
-              media.style.setProperty('display', 'none', 'important');
-              media.style.setProperty('visibility', 'hidden', 'important');
-              media.style.setProperty('opacity', '0', 'important');
-            });
+          ignoreElements: function(element){
+            var node = element;
+            while (node) {
+              if (node.id === 'ad-column') return true;
+              node = node.parentNode;
+            }
+            return false;
           }
         }).then(function(canvas){
+          restoreAdColumn();
           return compositeAdIntoScreenshot(canvas);
         }).then(function(canvas){
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
-        }).catch(reject);
+        }).catch(function(error){
+          restoreAdColumn();
+          reject(error);
+        });
       });
     }
 

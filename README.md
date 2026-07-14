@@ -1,11 +1,11 @@
-# ArenaSignage Player v1.3.6
+# ArenaSignage Player v1.3.7
 
 Player-only deployment for Cloudflare Pages.
 
-Changes from v1.3.5:
-- Routes ad media through the Cloudflare Worker media proxy so browser and Android WebView screenshots can safely composite image/video ads without CORS-tainted canvases.
-- Keeps native Android video playback unchanged.
-- Adds a timestamped proof-of-play fallback panel only when a WebView cannot expose a hardware-decoded video frame to canvas.
-- Retains responsive two-rink layout, overnight schedules, command polling, and screenshot cleanup.
+Changes from v1.3.6:
+- Prevents html2canvas from capturing the ad layer before manual compositing, fixing duplicated and misaligned browser screenshot ads.
+- Captures a software-decoded frame for native Android/WebView video ads when the ExoPlayer surface cannot be copied into the DOM screenshot.
+- Retains the timestamped proof-of-play fallback when the WebView cannot decode the campaign format.
+- Keeps instant Reload/Screenshot commands, responsive schedules, overnight bookings, media proxying, and proof-of-play reporting.
 
 Deploy `index.html`, `logo.png`, `_headers`, `version.json`, and this README at the repository root.
