@@ -1,19 +1,11 @@
-# ArenaSignage Player v1.3.4
+# ArenaSignage Player v1.3.6
 
-Deploy these files together at the root of the Cloudflare Pages player project:
+Player-only deployment for Cloudflare Pages.
 
-- `index.html`
-- `logo.png`
-- `_headers`
-- `version.json`
+Changes from v1.3.5:
+- Routes ad media through the Cloudflare Worker media proxy so browser and Android WebView screenshots can safely composite image/video ads without CORS-tainted canvases.
+- Keeps native Android video playback unchanged.
+- Adds a timestamped proof-of-play fallback panel only when a WebView cannot expose a hardware-decoded video frame to canvas.
+- Retains responsive two-rink layout, overnight schedules, command polling, and screenshot cleanup.
 
-Open a screen with `https://post-signage.pages.dev/?code=SCREEN_CODE&v=134`.
-
-The no-cache headers and version manifest are important for Android WebView devices.
-
-
-## v1.3.5
-
-- Fixed duplicated and mispositioned advertisements in browser DOM screenshots.
-- The screenshot renderer now blanks the cloned ad media and composites the active ad exactly once.
-- Added fixed viewport coordinates to keep browser captures aligned.
+Deploy `index.html`, `logo.png`, `_headers`, `version.json`, and this README at the repository root.

@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.5';
+    var PLAYER_VERSION = '1.3.6';
     var PLAYER_UPDATED_AT = '2026-07-14T03:30:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2422,10 +2422,18 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function mediaProxyUrl(url){
+      if (!url) return '';
+      var base = apiBase();
+      if (String(url).indexOf(base + '?media_proxy=1') === 0) return String(url);
+      return base + '?media_proxy=1&src=' + encodeURIComponent(String(url));
+    }
+
     function mediaUrlAllowsCors(url){
       try {
         var parsed = new URL(url, window.location.href);
         return parsed.origin === window.location.origin
+          || parsed.hostname.indexOf('.workers.dev') !== -1
           || parsed.hostname.indexOf('.supabase.co') !== -1
           || parsed.hostname.indexOf('.supabase.in') !== -1;
       } catch(e){ return false; }
@@ -2438,7 +2446,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (mediaUrlAllowsCors(url)) img.crossOrigin = 'anonymous';
         img.onload = function(){ resolve(img); };
         img.onerror = function(){ reject(new Error('Unable to load ad image for screenshot')); };
-        img.src = url;
+        img.src = mediaProxyUrl(url);
       });
     }
 
@@ -2452,6 +2460,29 @@ window.ARENA_SIGNAGE_CONFIG = {
       var sx = Math.max(0, (sw - cropW) / 2);
       var sy = Math.max(0, (sh - cropH) / 2);
       ctx.drawImage(source, sx, sy, cropW, cropH, dx, dy, dw, dh);
+    }
+
+
+    function drawProofFallback(ctx, dx, dy, dw, dh){
+      try {
+        var ad = adAt(0);
+        var name = ad && ad.name ? String(ad.name).replace(/_/g, ' ') : 'Advertisement';
+        ctx.save();
+        ctx.fillStyle = '#101010';
+        ctx.fillRect(dx, dy, dw, dh);
+        ctx.strokeStyle = '#2b2b2b';
+        ctx.lineWidth = Math.max(2, Math.round(dw * 0.008));
+        ctx.strokeRect(dx + 2, dy + 2, Math.max(0, dw - 4), Math.max(0, dh - 4));
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '700 ' + Math.max(18, Math.round(dw * 0.065)) + 'px Arial, sans-serif';
+        ctx.fillText(name.slice(0, 42), dx + dw / 2, dy + dh / 2 - Math.max(10, dh * 0.035), Math.max(20, dw * 0.86));
+        ctx.fillStyle = '#b8b8b8';
+        ctx.font = '600 ' + Math.max(12, Math.round(dw * 0.035)) + 'px Arial, sans-serif';
+        ctx.fillText('PROOF OF PLAY · ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), dx + dw / 2, dy + dh / 2 + Math.max(18, dh * 0.04), Math.max(20, dw * 0.9));
+        ctx.restore();
+      } catch(e){}
     }
 
     function compositeAdIntoScreenshot(canvas){
@@ -2478,14 +2509,16 @@ window.ARENA_SIGNAGE_CONFIG = {
             loadImageForCapture(imageEl.currentSrc || imageEl.src).then(function(img){
               try { drawCover(ctx, img, dx, dy, dw, dh); } catch(e){}
               resolve(canvas);
-            }).catch(function(){ resolve(canvas); });
+            }).catch(function(){ drawProofFallback(ctx, dx, dy, dw, dh); resolve(canvas); });
             return;
           }
 
           var activeVideo = document.querySelector('#ad-column video.showing');
+          var videoDrawn = false;
           if (activeVideo && activeVideo.readyState >= 2) {
-            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); } catch(e){}
+            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); videoDrawn = true; } catch(e){}
           }
+          if (!videoDrawn) drawProofFallback(ctx, dx, dy, dw, dh);
           resolve(canvas);
         } catch(e){ resolve(canvas); }
       });
@@ -2986,12 +3019,13 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (!nxt) return;
       if (nxt.media_type === 'image'){
         // warm the browser cache so image->image transitions have no decode gap
-        try { var pre = new Image(); if (mediaUrlAllowsCors(nxt.media_url)) pre.crossOrigin = 'anonymous'; pre.src = nxt.media_url; } catch(e){}
+        try { var pre = new Image(); var preUrl = mediaProxyUrl(nxt.media_url); pre.crossOrigin = 'anonymous'; pre.src = preUrl; } catch(e){}
         return;
       }
       if (!v) return;
-      if (v.getAttribute('src') !== nxt.media_url){
-        try { prepareMediaElementForUrl(v, nxt.media_url); v.setAttribute('src', nxt.media_url); v.load(); } catch(e){}
+      var nextMediaUrl = mediaProxyUrl(nxt.media_url);
+      if (v.getAttribute('src') !== nextMediaUrl){
+        try { prepareMediaElementForUrl(v, nextMediaUrl); v.setAttribute('src', nextMediaUrl); v.load(); } catch(e){}
       } else if (v.ended || v.readyState === 0){
         try { v.load(); } catch(e){} // finished last rotation: re-buffer now, not at swap time
       }
@@ -3008,8 +3042,9 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ad.media_type === 'image'){
         // Image ad: hide native surface / cover the videos with the image
         if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
-        prepareMediaElementForUrl(els.img, ad.media_url);
-        els.img.src = ad.media_url;
+        var imageMediaUrl = mediaProxyUrl(ad.media_url);
+        prepareMediaElementForUrl(els.img, imageMediaUrl);
+        els.img.src = imageMediaUrl;
         els.img.style.display = 'block';
         try { if (ADS.active) ADS.active.pause(); } catch(e){}
         var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
@@ -3049,9 +3084,10 @@ window.ARENA_SIGNAGE_CONFIG = {
           hidden.loop = false;
         }
 
-        if (v0.getAttribute('src') !== ad.media_url){
-          prepareMediaElementForUrl(v0, ad.media_url);
-          v0.setAttribute('src', ad.media_url);
+        var singleMediaUrl = mediaProxyUrl(ad.media_url);
+        if (v0.getAttribute('src') !== singleMediaUrl){
+          prepareMediaElementForUrl(v0, singleMediaUrl);
+          v0.setAttribute('src', singleMediaUrl);
           try { v0.load(); } catch(e){}
         }
         startWhenReady(v0);
@@ -3061,9 +3097,10 @@ window.ARENA_SIGNAGE_CONFIG = {
       // Double-buffer swap: play into the element that is NOT showing.
       var incoming = (ADS.active === els.a) ? els.b : els.a;
       incoming.loop = false;
-      if (incoming.getAttribute('src') !== ad.media_url){
-        prepareMediaElementForUrl(incoming, ad.media_url);
-        incoming.setAttribute('src', ad.media_url);
+      var incomingMediaUrl = mediaProxyUrl(ad.media_url);
+      if (incoming.getAttribute('src') !== incomingMediaUrl){
+        prepareMediaElementForUrl(incoming, incomingMediaUrl);
+        incoming.setAttribute('src', incomingMediaUrl);
         try { incoming.load(); } catch(e){}
       } else if (incoming.ended || incoming.readyState === 0){
         // Replaying a finished element without load() renders black on many TV engines
