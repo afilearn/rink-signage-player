@@ -1057,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.9';
-    var PLAYER_UPDATED_AT = '2026-07-14T19:30:00.000Z';
+    var PLAYER_VERSION = '1.4.0';
+    var PLAYER_UPDATED_AT = '2026-07-14T23:55:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2706,29 +2706,45 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function screenshotAdRect(canvas){
+      if (!canvas || !document.body || !document.body.classList.contains('ads-active')) return null;
+      var portrait = window.innerHeight > window.innerWidth;
+      if (portrait) {
+        return {
+          x: 0,
+          y: Math.round(canvas.height * 0.70),
+          w: canvas.width,
+          h: Math.max(1, canvas.height - Math.round(canvas.height * 0.70))
+        };
+      }
+      return {
+        x: Math.round(canvas.width * 0.70),
+        y: 0,
+        w: Math.max(1, canvas.width - Math.round(canvas.width * 0.70)),
+        h: canvas.height
+      };
+    }
+
     function compositeAdIntoScreenshot(canvas){
       return new Promise(function(resolve){
         try {
-          if (!document.body.classList.contains('ads-active')) return resolve(canvas);
-          var column = document.getElementById('ad-column');
-          if (!column) return resolve(canvas);
-          var rect = column.getBoundingClientRect();
-          if (rect.width <= 0 || rect.height <= 0) return resolve(canvas);
-
-          var scaleX = canvas.width / Math.max(window.innerWidth, 1);
-          var scaleY = canvas.height / Math.max(window.innerHeight, 1);
-          var dx = Math.round(rect.left * scaleX);
-          var dy = Math.round(rect.top * scaleY);
-          var dw = Math.round(rect.width * scaleX);
-          var dh = Math.round(rect.height * scaleY);
+          var target = screenshotAdRect(canvas);
+          if (!target) return resolve(canvas);
+          var dx = target.x, dy = target.y, dw = target.w, dh = target.h;
           var ctx = canvas.getContext('2d');
           if (!ctx) return resolve(canvas);
+
+          // Always clear the destination first. This prevents any fixed-position
+          // media artifact that html2canvas may have placed over the schedule.
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(dx, dy, dw, dh);
 
           var imageEl = document.getElementById('ad-image');
           var imageVisible = imageEl && imageEl.style.display !== 'none' && (imageEl.currentSrc || imageEl.src);
           if (imageVisible) {
             loadImageForCapture(imageEl.currentSrc || imageEl.src).then(function(img){
-              try { drawCover(ctx, img, dx, dy, dw, dh); } catch(e){}
+              try { drawCover(ctx, img, dx, dy, dw, dh); }
+              catch(e){ drawProofFallback(ctx, dx, dy, dw, dh); }
               resolve(canvas);
             }).catch(function(){ drawProofFallback(ctx, dx, dy, dw, dh); resolve(canvas); });
             return;
@@ -2736,13 +2752,17 @@ window.ARENA_SIGNAGE_CONFIG = {
 
           var activeVideo = document.querySelector('#ad-column video.showing');
           if (activeVideo && activeVideo.readyState >= 2 && activeVideo.videoWidth) {
-            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); return resolve(canvas); } catch(e){}
+            try {
+              drawCover(ctx, activeVideo, dx, dy, dw, dh);
+              return resolve(canvas);
+            } catch(e){}
           }
 
           var currentAd = currentAdForCapture();
           if (currentAd && currentAd.media_type !== 'image' && currentAd.media_url) {
             captureVideoFrameForScreenshot(currentAd.media_url).then(function(frame){
-              try { drawCover(ctx, frame, dx, dy, dw, dh); } catch(e){ drawProofFallback(ctx, dx, dy, dw, dh); }
+              try { drawCover(ctx, frame, dx, dy, dw, dh); }
+              catch(e){ drawProofFallback(ctx, dx, dy, dw, dh); }
               resolve(canvas);
             }).catch(function(){ drawProofFallback(ctx, dx, dy, dw, dh); resolve(canvas); });
             return;
@@ -2760,10 +2780,16 @@ window.ARENA_SIGNAGE_CONFIG = {
         var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
         var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
         var liveAdColumn = document.getElementById('ad-column');
-        if (liveAdColumn) liveAdColumn.setAttribute('data-html2canvas-ignore', 'true');
+        if (liveAdColumn) {
+          liveAdColumn.setAttribute('data-html2canvas-ignore', 'true');
+          liveAdColumn.style.setProperty('--asg-capture-hidden', '1');
+        }
 
         function restoreAdColumn(){
-          if (liveAdColumn) liveAdColumn.removeAttribute('data-html2canvas-ignore');
+          if (liveAdColumn) {
+            liveAdColumn.removeAttribute('data-html2canvas-ignore');
+            liveAdColumn.style.removeProperty('--asg-capture-hidden');
+          }
         }
 
         window.html2canvas(document.body, {
@@ -2780,6 +2806,18 @@ window.ARENA_SIGNAGE_CONFIG = {
           windowWidth: viewportWidth,
           windowHeight: viewportHeight,
           scale: Math.min(1, 1280 / viewportWidth),
+          onclone: function(clonedDocument){
+            // html2canvas can misplace fixed media elements in Chromium even
+            // when ignoreElements is used. Remove the complete ad subtree from
+            // the cloned document so it cannot float over the schedule.
+            var clonedAd = clonedDocument.getElementById('ad-column');
+            if (clonedAd) {
+              clonedAd.setAttribute('data-html2canvas-ignore', 'true');
+              clonedAd.style.setProperty('display', 'none', 'important');
+              clonedAd.style.setProperty('visibility', 'hidden', 'important');
+              while (clonedAd.firstChild) clonedAd.removeChild(clonedAd.firstChild);
+            }
+          },
           ignoreElements: function(element){
             var node = element;
             while (node) {

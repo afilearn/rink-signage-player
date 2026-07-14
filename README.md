@@ -1,10 +1,12 @@
-# ArenaSignage Player v1.3.9
+# ArenaSignage Player v1.4.0
 
-This player adds a robust native PixelCopy bridge path for the Android APK. It recognizes the injected native capture wrapper, validates the returned JPEG before upload, and falls back to DOM capture only when the native bridge is unavailable.
+This release fixes Chromium/browser screenshot composition while preserving Android PixelCopy capture.
 
-Expected Android status after the v1.3.9 APK is installed:
+Changes:
+- Removes the full live ad subtree from the html2canvas clone.
+- Uses a deterministic 70% schedule / 30% ad screenshot layout.
+- Clears the ad destination before inserting the current image or video frame.
+- Prevents fixed-position ads from floating over the schedule.
+- Keeps native Android PixelCopy screenshots unchanged.
 
-- `native_app_version: 1.3.9`
-- `screenshot_native: true`
-- `screenshot_method: pixelcopy_window`
-- screenshot capture type: `native`
+Deploy `index.html`, `logo.png`, `_headers`, `version.json`, and `README.md` to the player repository root.
