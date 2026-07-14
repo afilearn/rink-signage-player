@@ -13,6 +13,7 @@ window.ARENA_SIGNAGE_CONFIG = {
 };
 </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     :root { 
       --font-scale: 1;
@@ -940,6 +941,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var CONFIG = {
       POLL_INTERVAL: 60000,
       HEARTBEAT_INTERVAL: 30000,
+      DEVICE_STATUS_INTERVAL: 60000,
+      COMMAND_POLL_INTERVAL: 8000,
       WATCHDOG_INTERVAL: 5000,
       FREEZE_THRESHOLD: 45000,
       FREEZE_RECOVERY_HOLD: 30000,
@@ -981,6 +984,15 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
+    var PLAYER_VERSION = '1.3.1';
+    var PLAYER_UPDATED_AT = '2026-07-13T18:00:00.000Z';
+    var deviceState = {
+      lastContentSyncAt: null,
+      lastAdCampaignId: null,
+      lastAdName: null,
+      commandBusy: false,
+      lastErrorByType: {}
+    };
 
     function markContentHealthy() {
       if (healthState && healthState.recoveryPending) {
@@ -2078,14 +2090,13 @@ window.ARENA_SIGNAGE_CONFIG = {
         end = new Date(start.getTime() + CONFIG.DEFAULT_EVENT_DURATION * 60 * 1000); 
       }
       
-      // Compatibility with older payloads that do not include end_date.
       if (start && end && end.getTime() <= start.getTime()){ 
         end = new Date(end.getTime() + 24 * 60 * 60 * 1000); 
       }
       
       return {start: start, end: end};
     }
-    
+
     var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     
@@ -2163,12 +2174,265 @@ window.ARENA_SIGNAGE_CONFIG = {
           state.retryCount++;
           setTimeout(attempt, delay);
         } else {
+          reportPlayerError('network', e && e.message ? e.message : String(e), { url: url });
           fail && fail(e);
         }
       }
       
       attempt();
     }
+
+
+    function postJson(url, payload, done){
+      try {
+        var x = new XMLHttpRequest();
+        x.open('POST', url, true);
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.timeout = CONFIG.API_TIMEOUT;
+        x.onload = function(){
+          var body = null;
+          try { body = x.responseText ? JSON.parse(x.responseText) : null; } catch(e){}
+          if (done) done(x.status >= 200 && x.status < 300, body, x.status);
+        };
+        x.onerror = function(){ if (done) done(false, null, 0); };
+        x.ontimeout = function(){ if (done) done(false, null, 0); };
+        x.send(JSON.stringify(payload || {}));
+      } catch(e){ if (done) done(false, null, 0); }
+    }
+
+    function bridgeValue(bridge, name){
+      try {
+        if (bridge && typeof bridge[name] === 'function') return bridge[name]();
+      } catch(e){}
+      return '';
+    }
+
+    function platformDetails(){
+      var ua = navigator.userAgent || '';
+      var lower = ua.toLowerCase();
+      var platform = 'browser';
+      var osName = 'Unknown';
+      var osVersion = '';
+      var browserName = 'Browser';
+      var browserVersion = '';
+      if (window.AndroidBridge || hasNativePlayer()) platform = 'android_app';
+      else if (lower.indexOf('webos') !== -1 || lower.indexOf('netcast') !== -1 || window.PalmServiceBridge) platform = 'lg_si';
+      else if (lower.indexOf('tizen') !== -1 || window.tizen) platform = 'tizen';
+      else if (lower.indexOf('android') !== -1) platform = 'android_browser';
+
+      var m;
+      if ((m = ua.match(/Web0S[\/ ]([\d.]+)/i)) || (m = ua.match(/webOS[\/ ]([\d.]+)/i))) { osName = 'webOS'; osVersion = m[1] || ''; }
+      else if ((m = ua.match(/Android[\/ ]([\d.]+)/i))) { osName = 'Android'; osVersion = m[1] || ''; }
+      else if ((m = ua.match(/Windows NT[\/ ]([\d.]+)/i))) { osName = 'Windows'; osVersion = m[1] || ''; }
+      else if ((m = ua.match(/Tizen[\/ ]([\d.]+)/i))) { osName = 'Tizen'; osVersion = m[1] || ''; }
+
+      if ((m = ua.match(/Chrome[\/ ]([\d.]+)/i))) { browserName = 'Chrome'; browserVersion = m[1] || ''; }
+      else if ((m = ua.match(/Version[\/ ]([\d.]+)/i))) { browserName = platform === 'lg_si' ? 'LG Browser' : 'WebKit'; browserVersion = m[1] || ''; }
+      else if ((m = ua.match(/AppleWebKit[\/ ]([\d.]+)/i))) { browserName = 'WebKit'; browserVersion = m[1] || ''; }
+
+      var model = bridgeValue(window.AndroidBridge, 'getDeviceModel') || bridgeValue(window.NativePlayer, 'getDeviceModel');
+      if (!model && platform === 'lg_si') {
+        m = ua.match(/(?:model|LGTV)[\/\s:;-]*([A-Za-z0-9._-]+)/i);
+        model = m ? m[1] : 'LG commercial display';
+      }
+      if (!model) model = navigator.platform || 'Unknown device';
+
+      return { platform: platform, model: String(model), os_name: osName, os_version: osVersion, browser_name: browserName, browser_version: browserVersion };
+    }
+
+    function networkDetails(){
+      var c = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
+      var rtt = Number(c.rtt || net.responseTime || 0);
+      var quality = 'unknown';
+      if (navigator.onLine === false) quality = 'offline';
+      else if (rtt && rtt < 300) quality = 'good';
+      else if (rtt && rtt < 1200) quality = 'fair';
+      else if (rtt) quality = 'poor';
+      return {
+        network_type: c.effectiveType || c.type || '',
+        network_downlink_mbps: Number(c.downlink || 0),
+        network_rtt_ms: Math.round(rtt || 0),
+        network_quality: quality
+      };
+    }
+
+    function deviceCapabilities(){
+      return {
+        reload: true,
+        restart_app: !!((window.AndroidBridge && typeof window.AndroidBridge.restartApp === 'function') || (window.NativePlayer && typeof window.NativePlayer.restartApp === 'function')),
+        screenshot_native: !!((window.AndroidBridge && typeof window.AndroidBridge.captureScreenBase64 === 'function') || (window.NativePlayer && typeof window.NativePlayer.captureScreen === 'function')),
+        screenshot_dom: typeof window.html2canvas === 'function'
+      };
+    }
+
+    function devicePayload(){
+      var pd = platformDetails();
+      var nd = networkDetails();
+      return {
+        platform: pd.platform,
+        model: pd.model,
+        screen_width: window.screen ? window.screen.width : window.innerWidth,
+        screen_height: window.screen ? window.screen.height : window.innerHeight,
+        orientation: window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait',
+        player_version: PLAYER_VERSION,
+        player_updated_at: PLAYER_UPDATED_AT,
+        browser_name: pd.browser_name,
+        browser_version: pd.browser_version,
+        os_name: pd.os_name,
+        os_version: pd.os_version,
+        user_agent: navigator.userAgent || '',
+        network_type: nd.network_type,
+        network_downlink_mbps: nd.network_downlink_mbps,
+        network_rtt_ms: nd.network_rtt_ms,
+        network_quality: nd.network_quality,
+        capabilities: deviceCapabilities(),
+        last_content_sync_at: deviceState.lastContentSyncAt,
+        last_ad_campaign_id: deviceState.lastAdCampaignId,
+        last_ad_name: deviceState.lastAdName
+      };
+    }
+
+    function sendDeviceStatus(){
+      if (!state.screenCode || isPreviewMode()) return;
+      postJson(buildApiUrl() + '&device=1', devicePayload());
+    }
+
+    function reportPlayerError(errorType, message, context){
+      var now = Date.now();
+      var key = String(errorType || 'runtime');
+      if (now - (deviceState.lastErrorByType[key] || 0) < 60000) return;
+      deviceState.lastErrorByType[key] = now;
+      postJson(buildApiUrl() + '&player_error=1', {
+        error_type: key,
+        message: String(message || 'Unknown player error').slice(0, 2000),
+        context: context || {},
+        player_version: PLAYER_VERSION
+      });
+    }
+
+    function ackCommand(commandId, status, result, errorMessage, done){
+      postJson(buildApiUrl() + '&command_ack=1', {
+        command_id: commandId,
+        status: status,
+        result: result || {},
+        error_message: errorMessage || null
+      }, done);
+    }
+
+    function dataUrlFromNative(value){
+      if (!value || typeof value !== 'string') return null;
+      return value.indexOf('data:image/') === 0 ? value : 'data:image/jpeg;base64,' + value;
+    }
+
+    function captureNativeScreenshot(){
+      return new Promise(function(resolve, reject){
+        try {
+          var value = null;
+          if (window.AndroidBridge && typeof window.AndroidBridge.captureScreenBase64 === 'function') value = window.AndroidBridge.captureScreenBase64();
+          else if (window.NativePlayer && typeof window.NativePlayer.captureScreen === 'function') value = window.NativePlayer.captureScreen();
+          else return reject(new Error('Native screenshot is not supported'));
+          if (value && typeof value.then === 'function') {
+            value.then(function(v){ var d = dataUrlFromNative(v); d ? resolve({ dataUrl:d, type:'native' }) : reject(new Error('Native capture returned no image')); }).catch(reject);
+          } else {
+            var dataUrl = dataUrlFromNative(value);
+            dataUrl ? resolve({ dataUrl:dataUrl, type:'native' }) : reject(new Error('Native capture returned no image'));
+          }
+        } catch(e){ reject(e); }
+      });
+    }
+
+    function captureDomScreenshot(){
+      return new Promise(function(resolve, reject){
+        if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
+        window.html2canvas(document.body, {
+          backgroundColor: '#000000', logging: false, useCORS: true,
+          width: window.innerWidth, height: window.innerHeight,
+          scale: Math.min(1, 1280 / Math.max(window.innerWidth, 1))
+        }).then(function(canvas){
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
+        }).catch(reject);
+      });
+    }
+
+    function uploadScreenshot(command, shot){
+      postJson(buildApiUrl() + '&screenshot=1', {
+        command_id: command.id,
+        image_base64: shot.dataUrl,
+        capture_type: shot.type || 'dom',
+        width: shot.width || window.innerWidth,
+        height: shot.height || window.innerHeight
+      }, function(ok, body){
+        deviceState.commandBusy = false;
+        if (!ok) {
+          var reason = body && body.reason ? body.reason : 'Screenshot upload failed';
+          ackCommand(command.id, 'failed', {}, reason);
+          reportPlayerError('screenshot', reason, { command_id: command.id });
+        }
+      });
+    }
+
+    function executeRemoteCommand(command){
+      if (!command || !command.id || deviceState.commandBusy) return;
+      deviceState.commandBusy = true;
+      if (command.type === 'reload') {
+        ackCommand(command.id, 'completed', { action: 'reload' }, null, function(){
+          setTimeout(function(){
+            try {
+              if (window.AndroidBridge && typeof window.AndroidBridge.reloadPlayer === 'function') window.AndroidBridge.reloadPlayer();
+              else window.location.reload();
+            } catch(e){ window.location.reload(); }
+          }, 400);
+        });
+        return;
+      }
+      if (command.type === 'restart_app') {
+        try {
+          var supported = false;
+          if (window.AndroidBridge && typeof window.AndroidBridge.restartApp === 'function') { supported = true; window.AndroidBridge.restartApp(); }
+          else if (window.NativePlayer && typeof window.NativePlayer.restartApp === 'function') { supported = true; window.NativePlayer.restartApp(); }
+          if (!supported) throw new Error('App restart is not supported on this player');
+          ackCommand(command.id, 'completed', { action: 'restart_app' });
+        } catch(e){
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, e.message || String(e));
+        }
+        return;
+      }
+      if (command.type === 'screenshot') {
+        var nativeCapable = deviceCapabilities().screenshot_native;
+        var capture = nativeCapable ? captureNativeScreenshot().catch(function(){ return captureDomScreenshot(); }) : captureDomScreenshot();
+        capture.then(function(shot){ uploadScreenshot(command, shot); }).catch(function(e){
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, e.message || String(e));
+          reportPlayerError('screenshot', e.message || String(e), { command_id: command.id });
+        });
+        return;
+      }
+      deviceState.commandBusy = false;
+      ackCommand(command.id, 'failed', {}, 'Unsupported command');
+    }
+
+    function pollRemoteCommand(){
+      if (!state.screenCode || deviceState.commandBusy || isPreviewMode()) return;
+      try {
+        var x = new XMLHttpRequest();
+        x.open('GET', buildApiUrl() + '&command=1&_=' + Date.now(), true);
+        x.timeout = 5000;
+        x.onload = function(){
+          if (x.status < 200 || x.status >= 300) return;
+          try { var body = JSON.parse(x.responseText || '{}'); if (body.command) executeRemoteCommand(body.command); } catch(e){}
+        };
+        x.send(null);
+      } catch(e){}
+    }
+
+    window.addEventListener('error', function(event){
+      reportPlayerError('javascript', event.message || 'JavaScript error', { file: event.filename || '', line: event.lineno || 0, column: event.colno || 0 });
+    });
+    window.addEventListener('unhandledrejection', function(event){
+      var reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
+      reportPlayerError('promise', reason, {});
+    });
 
     var TICKER = {text: '', x: 0, w: 0, holderW: 0, emptyStreak: 0, lastTime: 0, animFrame: null};
     
@@ -2444,6 +2708,12 @@ window.ARENA_SIGNAGE_CONFIG = {
       ADS.swapping = false;
     }
 
+    function rememberCurrentAd(ad){
+      if (!ad) return;
+      deviceState.lastAdCampaignId = ad.id || null;
+      deviceState.lastAdName = ad.name || null;
+    }
+
     function updateAds(list){
       list = list || [];
       var sig = adsSignature(list);
@@ -2494,6 +2764,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
       var ad = adAt(0);
       if (!ad) return;
+      rememberCurrentAd(ad);
 
       if (ad.media_type === 'image'){
         // Image ad: hide native surface / cover the videos with the image
@@ -2655,6 +2926,9 @@ window.ARENA_SIGNAGE_CONFIG = {
         });
 
         v.addEventListener('error', function(){
+          var ad = adAt(0);
+          var mediaError = v.error ? ('MediaError ' + v.error.code) : 'Video playback error';
+          reportPlayerError('video', mediaError, { campaign_id: ad && ad.id, media_url: ad && ad.media_url });
           if (ADS.swapping || v === ADS.active) setTimeout(nextAd, 3000); // skip broken file
         });
       }
@@ -3090,7 +3364,10 @@ window.ARENA_SIGNAGE_CONFIG = {
           var data = null;
           try{
             data = JSON.parse(txt);
-            if (data) markContentHealthy();
+            if (data) {
+              markContentHealthy();
+              deviceState.lastContentSyncAt = new Date().toISOString();
+            }
           } catch(e){
             console.log('JSON parse error:', e);
           }
@@ -3400,7 +3677,11 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
 
       sendHealthEvent('boot');
+      sendDeviceStatus();
+      setTimeout(pollRemoteCommand, 2500);
       setInterval(sendHeartbeat, CONFIG.HEARTBEAT_INTERVAL);
+      setInterval(sendDeviceStatus, CONFIG.DEVICE_STATUS_INTERVAL);
+      setInterval(pollRemoteCommand, CONFIG.COMMAND_POLL_INTERVAL);
       setInterval(watchdogTick, CONFIG.WATCHDOG_INTERVAL);
 
       updateClock();
