@@ -4,6 +4,9 @@
   <meta charset="utf-8"/>
   <title>Digital Signage Player</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
   <script>
 window.ARENA_SIGNAGE_CONFIG = {
   // Cloudflare Worker URL, without a trailing slash.
@@ -831,50 +834,77 @@ window.ARENA_SIGNAGE_CONFIG = {
       body.ads-active #realtime-status{ right:1vw; }
     }
 
-    /* Combined schedule columns remain readable with and without a side ad. */
+    /* Combined schedule columns: large enough for viewing at a distance,
+       while keeping overnight time ranges on one line. */
+    .rink-panel-events {
+      display:flex;
+      flex-direction:column;
+    }
     .rink-panel .event-header,
     .rink-panel .event-row {
       display:grid;
-      grid-template-columns:minmax(12em, 1.35fr) minmax(0, 2fr) minmax(4em, 0.55fr);
+      grid-template-columns:30% minmax(0, 1fr) 18%;
       align-items:center;
-      column-gap:clamp(4px, 0.5vw, 12px);
+      column-gap:clamp(4px, 0.45vw, 10px);
+      flex-shrink:0;
+    }
+    .rink-panel .event-header {
+      font-size:clamp(14px, calc(2.8vh * var(--font-scale)), 30px);
+      padding:1.15vh 0.7vw;
+    }
+    .rink-panel .event-row {
+      font-size:clamp(18px, calc(3.9vh * var(--font-scale)), 44px);
+      padding:1.35vh 0.7vw;
+      line-height:1.12;
     }
     .rink-panel .event-cell {
       min-width:0;
-      padding-left:clamp(4px, 0.75vw, 16px);
-      padding-right:clamp(4px, 0.75vw, 16px);
+      padding-left:clamp(5px, 0.75vw, 16px);
+      padding-right:clamp(5px, 0.75vw, 16px);
     }
     .rink-panel .event-cell.time {
       text-align:left;
       white-space:nowrap;
       overflow:hidden;
+      text-overflow:clip;
       font-variant-numeric:tabular-nums;
-      font-size:clamp(14px, 2.8vh, 32px);
+      font-size:inherit;
+      letter-spacing:-0.025em;
     }
-    .rink-panel .event-cell:not(.time):not(.room) {
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
+    .rink-panel .event-cell:not(.time):not(.room),
     .rink-panel .event-cell.room {
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
     }
-    body.ads-active .rink-panel .event-cell.time {
-      font-size:clamp(13px, 2.55vh, 28px);
+    .rink-panel .event-cell.room {
+      text-align:right;
+    }
+    body.ads-active .rink-panel .event-header,
+    body.ads-active .rink-panel .event-row {
+      grid-template-columns:34% minmax(0, 1fr) 16%;
     }
     body.ads-active .rink-panel .event-row {
-      font-size:clamp(15px, 3.15vh, 32px);
+      font-size:clamp(18px, calc(3.75vh * var(--font-scale)), 40px);
     }
-    @media (max-width: 900px), (max-height: 600px) {
+    @media (max-width:900px), (max-height:600px) {
       .rink-panel .event-header,
-      .rink-panel .event-row {
-        grid-template-columns:minmax(11.2em, 1.45fr) minmax(0, 2fr) minmax(3.2em, 0.5fr);
+      .rink-panel .event-row,
+      body.ads-active .rink-panel .event-header,
+      body.ads-active .rink-panel .event-row {
+        grid-template-columns:36% minmax(0, 1fr) 15%;
       }
-      .rink-panel .event-cell.time { font-size:clamp(12px, 2.5vh, 22px); }
-      .rink-panel .event-row { font-size:clamp(14px, 3vh, 24px); }
-      .rink-panel .event-header { font-size:clamp(11px, 2.1vh, 18px); }
+      .rink-panel .event-header {
+        font-size:clamp(14px, calc(2.75vh * var(--font-scale)), 22px);
+      }
+      .rink-panel .event-row,
+      body.ads-active .rink-panel .event-row {
+        font-size:clamp(18px, calc(3.8vh * var(--font-scale)), 28px);
+      }
+      .rink-panel .event-cell {
+        padding-left:clamp(4px, 0.65vw, 10px);
+        padding-right:clamp(4px, 0.65vw, 10px);
+      }
     }
 
     /* ---- Tomorrow preview (after 9pm, alternates with today) ---- */
@@ -973,7 +1003,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
-    <img id="ad-image" alt="" style="display:none;width:100%;height:100%;object-fit:cover;background:#000;position:absolute;inset:0;z-index:2;" />
+    <img id="ad-image" alt="" decoding="async" style="display:none;width:100%;height:100%;object-fit:cover;background:#000;position:absolute;inset:0;z-index:2;" />
   </div>
 <script>
   (function(){
@@ -1027,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.3';
-    var PLAYER_UPDATED_AT = '2026-07-14T02:00:00.000Z';
+    var PLAYER_VERSION = '1.3.4';
+    var PLAYER_UPDATED_AT = '2026-07-14T03:30:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -1545,22 +1575,12 @@ window.ARENA_SIGNAGE_CONFIG = {
       // Collect all ticker text
       var allTickers = [];
 
-      // Put the TIME / EVENT / ROOM labels above the first rink that
-      // actually has an event. This avoids hiding the labels when the top rink
-      // is empty but the lower rink has games.
-      var nowForHeader = new Date();
-      var headerOwnerIndex = -1;
-      for (var h = 0; h < rinkDataArray.length; h++) {
-        if (filterActiveEvents(rinkDataArray[h].events || [], nowForHeader).length > 0) {
-          headerOwnerIndex = h;
-          break;
-        }
-      }
-
+      // The column labels always belong directly below the top rink header.
+      // This keeps the visual grid anchored at the top even when that rink is empty.
       // Create panel for each rink
       for (var i = 0; i < rinkDataArray.length; i++) {
         var rinkData = rinkDataArray[i];
-        var panel = createRinkPanel(rinkData, i, i === headerOwnerIndex);
+        var panel = createRinkPanel(rinkData, i, i === 0);
         container.appendChild(panel);
 
         if (rinkData.ticker_text) {
@@ -1642,20 +1662,21 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       panel.appendChild(header);
 
-      // Events container
+      // Events container. The top panel always owns the column labels,
+      // even when it has no events.
+      var eventsContainer = document.createElement('div');
+      eventsContainer.className = 'rink-panel-events';
+
+      var html = '';
+      if (showColumnHeader) {
+        html += '<div class="event-header" style="color:' + colors.roomText + '; border-bottom: 0.3vh solid ' + colors.accent + ';">'
+             + '<div class="event-cell time">Time</div>'
+             + '<div class="event-cell">Event</div>'
+             + '<div class="event-cell room">Room</div>'
+             + '</div>';
+      }
+
       if (events.length > 0) {
-        var eventsContainer = document.createElement('div');
-        eventsContainer.className = 'rink-panel-events';
-
-        var html = '';
-        if (showColumnHeader) {
-          html += '<div class="event-header" style="color:' + colors.roomText + '; border-bottom: 0.3vh solid ' + colors.accent + ';">'
-               + '<div class="event-cell time">Time</div>'
-               + '<div class="event-cell">Event</div>'
-               + '<div class="event-cell room">Room</div>'
-               + '</div>';
-        }
-
         for (var j = 0; j < events.length; j++) {
           var ev = events[j];
           var teams = esc(ev.teams || '');
@@ -1675,16 +1696,15 @@ window.ARENA_SIGNAGE_CONFIG = {
 
           if (times.start) {
             var n = now.getTime();
-            var s = times.start.getTime();
-            var e = times.end ? times.end.getTime() : null;
+            var sTime = times.start.getTime();
+            var eTime = times.end ? times.end.getTime() : null;
 
-            if (n >= s && (e === null || n < e)) {
+            if (n >= sTime && (eTime === null || n < eTime)) {
               isLive = true;
             }
           }
 
           var livePillStyle = 'background:' + colors.liveBadge + ';';
-          // Skip live background if it's the old orange default from API
           var skipLiveBg = !theme.live_bg || theme.live_bg === 'rgba(31,18,10,0.8)';
           var liveRowStyle = isLive ? (skipLiveBg ? '' : 'background:' + colors.liveBg + ';') + 'border-bottom-color:' + colors.liveBadge + ';' : '';
 
@@ -1694,7 +1714,6 @@ window.ARENA_SIGNAGE_CONFIG = {
                + '<div class="event-cell room" style="color:' + colors.roomText + ';">' + room + '</div>'
                + '</div>';
 
-          // Add progress bar for live events
           if (isLive && times.start && times.end) {
             var sMs = times.start.getTime();
             var eMs = times.end.getTime();
@@ -1705,16 +1724,15 @@ window.ARENA_SIGNAGE_CONFIG = {
                  + '<div class="progress-fill" style="width:' + pct + '%;background:' + colors.progressBar + ';"></div></div>';
           }
         }
-
-        eventsContainer.innerHTML = html;
-        panel.appendChild(eventsContainer);
       } else {
-        var emptyDiv = document.createElement('div');
-        emptyDiv.className = 'rink-panel-empty';
-        emptyDiv.innerHTML = '<div class="rink-panel-empty-icon">&#128197;</div>'
-                           + '<div>No events scheduled</div>';
-        panel.appendChild(emptyDiv);
+        html += '<div class="rink-panel-empty">'
+             + '<div class="rink-panel-empty-icon">&#128197;</div>'
+             + '<div>No events scheduled</div>'
+             + '</div>';
       }
+
+      eventsContainer.innerHTML = html;
+      panel.appendChild(eventsContainer);
 
       return panel;
     }
@@ -1750,17 +1768,8 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       container.innerHTML = '';
 
-      var nowForHeader = new Date();
-      var headerOwnerIndex = -1;
-      for (var h = 0; h < state.combinedRinks.length; h++) {
-        if (filterActiveEvents(state.combinedRinks[h].events || [], nowForHeader).length > 0) {
-          headerOwnerIndex = h;
-          break;
-        }
-      }
-
       for (var i = 0; i < state.combinedRinks.length; i++) {
-        var panel = createRinkPanel(state.combinedRinks[i], i, i === headerOwnerIndex);
+        var panel = createRinkPanel(state.combinedRinks[i], i, i === 0);
         container.appendChild(panel);
       }
     }
@@ -2413,13 +2422,85 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function mediaUrlAllowsCors(url){
+      try {
+        var parsed = new URL(url, window.location.href);
+        return parsed.origin === window.location.origin
+          || parsed.hostname.indexOf('.supabase.co') !== -1
+          || parsed.hostname.indexOf('.supabase.in') !== -1;
+      } catch(e){ return false; }
+    }
+
+    function loadImageForCapture(url){
+      return new Promise(function(resolve, reject){
+        if (!url) return reject(new Error('No ad image URL'));
+        var img = new Image();
+        if (mediaUrlAllowsCors(url)) img.crossOrigin = 'anonymous';
+        img.onload = function(){ resolve(img); };
+        img.onerror = function(){ reject(new Error('Unable to load ad image for screenshot')); };
+        img.src = url;
+      });
+    }
+
+    function drawCover(ctx, source, dx, dy, dw, dh){
+      var sw = source.videoWidth || source.naturalWidth || source.width || 0;
+      var sh = source.videoHeight || source.naturalHeight || source.height || 0;
+      if (!sw || !sh || !dw || !dh) return;
+      var scale = Math.max(dw / sw, dh / sh);
+      var cropW = dw / scale;
+      var cropH = dh / scale;
+      var sx = Math.max(0, (sw - cropW) / 2);
+      var sy = Math.max(0, (sh - cropH) / 2);
+      ctx.drawImage(source, sx, sy, cropW, cropH, dx, dy, dw, dh);
+    }
+
+    function compositeAdIntoScreenshot(canvas){
+      return new Promise(function(resolve){
+        try {
+          if (!document.body.classList.contains('ads-active')) return resolve(canvas);
+          var column = document.getElementById('ad-column');
+          if (!column) return resolve(canvas);
+          var rect = column.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return resolve(canvas);
+
+          var scaleX = canvas.width / Math.max(window.innerWidth, 1);
+          var scaleY = canvas.height / Math.max(window.innerHeight, 1);
+          var dx = Math.round(rect.left * scaleX);
+          var dy = Math.round(rect.top * scaleY);
+          var dw = Math.round(rect.width * scaleX);
+          var dh = Math.round(rect.height * scaleY);
+          var ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(canvas);
+
+          var imageEl = document.getElementById('ad-image');
+          var imageVisible = imageEl && imageEl.style.display !== 'none' && (imageEl.currentSrc || imageEl.src);
+          if (imageVisible) {
+            loadImageForCapture(imageEl.currentSrc || imageEl.src).then(function(img){
+              try { drawCover(ctx, img, dx, dy, dw, dh); } catch(e){}
+              resolve(canvas);
+            }).catch(function(){ resolve(canvas); });
+            return;
+          }
+
+          var activeVideo = document.querySelector('#ad-column video.showing');
+          if (activeVideo && activeVideo.readyState >= 2) {
+            try { drawCover(ctx, activeVideo, dx, dy, dw, dh); } catch(e){}
+          }
+          resolve(canvas);
+        } catch(e){ resolve(canvas); }
+      });
+    }
+
     function captureDomScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
         window.html2canvas(document.body, {
           backgroundColor: '#000000', logging: false, useCORS: true,
+          allowTaint: false,
           width: window.innerWidth, height: window.innerHeight,
           scale: Math.min(1, 1280 / Math.max(window.innerWidth, 1))
+        }).then(function(canvas){
+          return compositeAdIntoScreenshot(canvas);
         }).then(function(canvas){
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
         }).catch(reject);
@@ -2450,8 +2531,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         ackCommand(command.id, 'completed', { action: 'reload' }, null, function(){
           setTimeout(function(){
             try {
-              if (window.AndroidBridge && typeof window.AndroidBridge.reloadPlayer === 'function') window.AndroidBridge.reloadPlayer();
-              else window.location.reload();
+              hardReloadPlayer();
             } catch(e){ window.location.reload(); }
           }, 400);
         });
@@ -2508,6 +2588,47 @@ window.ARENA_SIGNAGE_CONFIG = {
         x.ontimeout = function(){ console.log('[remote-command] timeout'); };
         x.send(null);
       } catch(e){ console.log('[remote-command] exception', e); }
+    }
+
+    function compactPlayerVersion(version){
+      return String(version || '').replace(/\D/g, '') || '0';
+    }
+
+    function hardReloadPlayer(){
+      try {
+        var nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('v', compactPlayerVersion(PLAYER_VERSION));
+        nextUrl.searchParams.set('_reload', String(Date.now()));
+        var target = nextUrl.toString();
+
+        try {
+          if (window.AndroidBridge && typeof window.AndroidBridge.clearWebViewCache === 'function') {
+            window.AndroidBridge.clearWebViewCache();
+          }
+        } catch(e){}
+
+        if (window.AndroidBridge && typeof window.AndroidBridge.loadUrl === 'function') {
+          window.AndroidBridge.loadUrl(target);
+        } else {
+          window.location.replace(target);
+        }
+      } catch(e){
+        window.location.reload();
+      }
+    }
+
+    function checkForPlayerUpdate(){
+      try {
+        var updateUrl = new URL('./version.json', window.location.href);
+        updateUrl.searchParams.set('_', String(Date.now()));
+        fetch(updateUrl.toString(), { cache:'no-store' })
+          .then(function(response){ return response.ok ? response.json() : null; })
+          .then(function(info){
+            if (!info || !info.version) return;
+            if (String(info.version) !== String(PLAYER_VERSION)) hardReloadPlayer();
+          })
+          .catch(function(){});
+      } catch(e){}
     }
 
     window.addEventListener('error', function(event){
@@ -2822,6 +2943,14 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     }
 
+    function prepareMediaElementForUrl(el, url){
+      if (!el) return;
+      try {
+        if (mediaUrlAllowsCors(url)) el.crossOrigin = 'anonymous';
+        else el.removeAttribute('crossorigin');
+      } catch(e){}
+    }
+
     function preloadNextInto(v){
       // IMPORTANT for LG SI/webOS: never load the same single ad into both
       // video elements. Some LG decoders hand the video surface to the hidden
@@ -2831,12 +2960,12 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (!nxt) return;
       if (nxt.media_type === 'image'){
         // warm the browser cache so image->image transitions have no decode gap
-        try { var pre = new Image(); pre.src = nxt.media_url; } catch(e){}
+        try { var pre = new Image(); if (mediaUrlAllowsCors(nxt.media_url)) pre.crossOrigin = 'anonymous'; pre.src = nxt.media_url; } catch(e){}
         return;
       }
       if (!v) return;
       if (v.getAttribute('src') !== nxt.media_url){
-        try { v.setAttribute('src', nxt.media_url); v.load(); } catch(e){}
+        try { prepareMediaElementForUrl(v, nxt.media_url); v.setAttribute('src', nxt.media_url); v.load(); } catch(e){}
       } else if (v.ended || v.readyState === 0){
         try { v.load(); } catch(e){} // finished last rotation: re-buffer now, not at swap time
       }
@@ -2853,6 +2982,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ad.media_type === 'image'){
         // Image ad: hide native surface / cover the videos with the image
         if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
+        prepareMediaElementForUrl(els.img, ad.media_url);
         els.img.src = ad.media_url;
         els.img.style.display = 'block';
         try { if (ADS.active) ADS.active.pause(); } catch(e){}
@@ -2894,6 +3024,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         }
 
         if (v0.getAttribute('src') !== ad.media_url){
+          prepareMediaElementForUrl(v0, ad.media_url);
           v0.setAttribute('src', ad.media_url);
           try { v0.load(); } catch(e){}
         }
@@ -2905,6 +3036,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       var incoming = (ADS.active === els.a) ? els.b : els.a;
       incoming.loop = false;
       if (incoming.getAttribute('src') !== ad.media_url){
+        prepareMediaElementForUrl(incoming, ad.media_url);
         incoming.setAttribute('src', ad.media_url);
         try { incoming.load(); } catch(e){}
       } else if (incoming.ended || incoming.readyState === 0){
@@ -3762,6 +3894,8 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       sendHealthEvent('boot');
       sendDeviceStatus();
+      setTimeout(checkForPlayerUpdate, 1500);
+      setInterval(checkForPlayerUpdate, 300000);
       setTimeout(pollRemoteCommand, 2500);
       setInterval(sendHeartbeat, CONFIG.HEARTBEAT_INTERVAL);
       setInterval(sendDeviceStatus, CONFIG.DEVICE_STATUS_INTERVAL);
