@@ -984,8 +984,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.3.1';
-    var PLAYER_UPDATED_AT = '2026-07-13T18:00:00.000Z';
+    var PLAYER_VERSION = '1.3.2';
+    var PLAYER_UPDATED_AT = '2026-07-14T00:40:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2294,7 +2294,9 @@ window.ARENA_SIGNAGE_CONFIG = {
 
     function sendDeviceStatus(){
       if (!state.screenCode || isPreviewMode()) return;
-      postJson(buildApiUrl() + '&device=1', devicePayload());
+      postJson(buildApiUrl() + '&device=1', devicePayload(), function(ok, body, status){
+        if (!ok) console.log('[device-status] failed', status, body || '');
+      });
     }
 
     function reportPlayerError(errorType, message, context){
@@ -2416,14 +2418,26 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (!state.screenCode || deviceState.commandBusy || isPreviewMode()) return;
       try {
         var x = new XMLHttpRequest();
-        x.open('GET', buildApiUrl() + '&command=1&_=' + Date.now(), true);
+        var commandUrl = buildApiUrl() + '&command=1&_=' + Date.now();
+        x.open('GET', commandUrl, true);
         x.timeout = 5000;
         x.onload = function(){
-          if (x.status < 200 || x.status >= 300) return;
-          try { var body = JSON.parse(x.responseText || '{}'); if (body.command) executeRemoteCommand(body.command); } catch(e){}
+          if (x.status < 200 || x.status >= 300) {
+            console.log('[remote-command] pull failed', x.status, x.responseText || '');
+            return;
+          }
+          try {
+            var body = JSON.parse(x.responseText || '{}');
+            if (body.command) {
+              console.log('[remote-command] received', body.command.type, body.command.id);
+              executeRemoteCommand(body.command);
+            }
+          } catch(e){ console.log('[remote-command] invalid response', e); }
         };
+        x.onerror = function(){ console.log('[remote-command] network error'); };
+        x.ontimeout = function(){ console.log('[remote-command] timeout'); };
         x.send(null);
-      } catch(e){}
+      } catch(e){ console.log('[remote-command] exception', e); }
     }
 
     window.addEventListener('error', function(event){
