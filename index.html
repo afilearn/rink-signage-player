@@ -1057,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.1';
-    var PLAYER_UPDATED_AT = '2026-07-14T23:55:00.000Z';
+    var PLAYER_VERSION = '1.4.2';
+    var PLAYER_UPDATED_AT = '2026-07-15T03:20:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2855,6 +2855,92 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function captureLgSiScreenshot(){
+      return new Promise(function(resolve, reject){
+        if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
+
+        var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1920, 1);
+        var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1080, 1);
+        var targetWidth = 1280;
+        var targetHeight = Math.max(1, Math.round(targetWidth * viewportHeight / viewportWidth));
+        var liveAdColumn = document.getElementById('ad-column');
+        var originalStyle = liveAdColumn ? liveAdColumn.getAttribute('style') : null;
+        var hadIgnore = liveAdColumn ? liveAdColumn.hasAttribute('data-html2canvas-ignore') : false;
+        var restored = false;
+
+        function restoreAdColumn(){
+          if (restored) return;
+          restored = true;
+          if (!liveAdColumn) return;
+          if (originalStyle === null) liveAdColumn.removeAttribute('style');
+          else liveAdColumn.setAttribute('style', originalStyle);
+          if (!hadIgnore) liveAdColumn.removeAttribute('data-html2canvas-ignore');
+        }
+
+        if (liveAdColumn) {
+          liveAdColumn.setAttribute('data-html2canvas-ignore', 'true');
+          // Chrome 79 on LG webOS does not reliably honor html2canvas ignore
+          // markers for fixed elements. Remove the live ad from layout/paint for
+          // the brief capture window while body.ads-active preserves the exact
+          // 70% schedule width.
+          liveAdColumn.style.setProperty('display', 'none', 'important');
+          liveAdColumn.style.setProperty('visibility', 'hidden', 'important');
+          liveAdColumn.style.setProperty('opacity', '0', 'important');
+          liveAdColumn.style.setProperty('pointer-events', 'none', 'important');
+          try { void liveAdColumn.offsetHeight; } catch(e){}
+        }
+
+        setTimeout(function(){
+          window.html2canvas(document.body, {
+            backgroundColor: '#000000',
+            logging: false,
+            useCORS: true,
+            allowTaint: false,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0,
+            width: viewportWidth,
+            height: viewportHeight,
+            windowWidth: viewportWidth,
+            windowHeight: viewportHeight,
+            scale: Math.min(1, targetWidth / viewportWidth),
+            onclone: function(clonedDocument){
+              var clonedAd = clonedDocument.getElementById('ad-column');
+              if (clonedAd && clonedAd.parentNode) clonedAd.parentNode.removeChild(clonedAd);
+            },
+            ignoreElements: function(element){
+              var node = element;
+              while (node) {
+                if (node.id === 'ad-column') return true;
+                node = node.parentNode;
+              }
+              return false;
+            }
+          }).then(function(rawCanvas){
+            restoreAdColumn();
+
+            // Normalize LG output to a deterministic 16:9 canvas. This avoids
+            // Chrome 79/html2canvas choosing a different backing-store size.
+            var finalCanvas = document.createElement('canvas');
+            finalCanvas.width = targetWidth;
+            finalCanvas.height = targetHeight;
+            var ctx = finalCanvas.getContext('2d');
+            if (!ctx) throw new Error('Unable to create LG screenshot canvas');
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+            ctx.drawImage(rawCanvas, 0, 0, rawCanvas.width, rawCanvas.height, 0, 0, finalCanvas.width, finalCanvas.height);
+            return compositeAdIntoScreenshot(finalCanvas);
+          }).then(function(canvas){
+            resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
+          }).catch(function(error){
+            restoreAdColumn();
+            reject(error);
+          });
+        }, 120);
+      });
+    }
+
     function captureDomScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
@@ -2865,6 +2951,10 @@ window.ARENA_SIGNAGE_CONFIG = {
         var details = platformDetails();
         if (details.platform === 'browser' && document.body.classList.contains('ads-active')) {
           captureDesktopBrowserScreenshot().then(resolve).catch(reject);
+          return;
+        }
+        if (details.platform === 'lg_si' && document.body.classList.contains('ads-active')) {
+          captureLgSiScreenshot().then(resolve).catch(reject);
           return;
         }
         var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
