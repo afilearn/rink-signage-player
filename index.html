@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.0';
+    var PLAYER_VERSION = '1.4.1';
     var PLAYER_UPDATED_AT = '2026-07-14T23:55:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2774,9 +2774,99 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function captureDesktopBrowserScreenshot(){
+      return new Promise(function(resolve, reject){
+        if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
+
+        var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
+        var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
+        var portrait = viewportHeight > viewportWidth;
+        var scale = Math.min(1, 1280 / viewportWidth);
+        var scheduleCssWidth = portrait ? viewportWidth : Math.round(viewportWidth * 0.70);
+        var scheduleCssHeight = portrait ? Math.round(viewportHeight * 0.70) : viewportHeight;
+        var liveAdColumn = document.getElementById('ad-column');
+
+        if (liveAdColumn) liveAdColumn.setAttribute('data-html2canvas-ignore', 'true');
+
+        function restoreAdColumn(){
+          if (liveAdColumn) liveAdColumn.removeAttribute('data-html2canvas-ignore');
+        }
+
+        window.html2canvas(document.body, {
+          backgroundColor: '#000000',
+          logging: false,
+          useCORS: true,
+          allowTaint: false,
+          x: 0,
+          y: 0,
+          scrollX: 0,
+          scrollY: 0,
+          width: scheduleCssWidth,
+          height: scheduleCssHeight,
+          windowWidth: viewportWidth,
+          windowHeight: viewportHeight,
+          scale: scale,
+          onclone: function(clonedDocument){
+            var clonedAd = clonedDocument.getElementById('ad-column');
+            if (clonedAd) {
+              clonedAd.setAttribute('data-html2canvas-ignore', 'true');
+              clonedAd.style.setProperty('display', 'none', 'important');
+              clonedAd.style.setProperty('visibility', 'hidden', 'important');
+              while (clonedAd.firstChild) clonedAd.removeChild(clonedAd.firstChild);
+            }
+          },
+          ignoreElements: function(element){
+            var node = element;
+            while (node) {
+              if (node.id === 'ad-column') return true;
+              node = node.parentNode;
+            }
+            return false;
+          }
+        }).then(function(scheduleCanvas){
+          restoreAdColumn();
+
+          // Build a fresh viewport-sized canvas rather than relying on the
+          // dimensions html2canvas chooses for a flex/fixed-position page.
+          // This guarantees an exact 70/30 landscape split in desktop browsers.
+          var finalCanvas = document.createElement('canvas');
+          finalCanvas.width = Math.max(1, Math.round(viewportWidth * scale));
+          finalCanvas.height = Math.max(1, Math.round(viewportHeight * scale));
+          var ctx = finalCanvas.getContext('2d');
+          if (!ctx) throw new Error('Unable to create screenshot canvas');
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+          var scheduleW = portrait ? finalCanvas.width : Math.round(finalCanvas.width * 0.70);
+          var scheduleH = portrait ? Math.round(finalCanvas.height * 0.70) : finalCanvas.height;
+          ctx.drawImage(
+            scheduleCanvas,
+            0, 0, scheduleCanvas.width, scheduleCanvas.height,
+            0, 0, scheduleW, scheduleH
+          );
+
+          return compositeAdIntoScreenshot(finalCanvas);
+        }).then(function(canvas){
+          resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
+        }).catch(function(error){
+          restoreAdColumn();
+          reject(error);
+        });
+      });
+    }
+
     function captureDomScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
+
+        // Desktop browser screenshots use a dedicated compositor so the
+        // schedule always occupies exactly 70% and the ad exactly 30%.
+        // LG SI and Android fallback capture retain the proven existing path.
+        var details = platformDetails();
+        if (details.platform === 'browser' && document.body.classList.contains('ads-active')) {
+          captureDesktopBrowserScreenshot().then(resolve).catch(reject);
+          return;
+        }
         var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
         var viewportHeight = Math.max(window.innerHeight || document.documentElement.clientHeight || 1, 1);
         var liveAdColumn = document.getElementById('ad-column');
