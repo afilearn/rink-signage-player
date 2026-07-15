@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.5';
+    var PLAYER_VERSION = '1.4.6';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2985,6 +2985,77 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    /* ── LG SCAP screen capture ─────────────────────────────────────────
+       webOS Chrome cannot drawImage() hardware-plane video (black frames),
+       so DOM capture can never include a playing webm. The SCAP API's
+       Signage.captureScreen asks the compositor for the mixed output —
+       schedule AND video — exactly what LG's own CMS tools use for proof
+       of play. The library loads lazily and only on lg_si; on any failure
+       we fall back to the existing html2canvas path. */
+    var scapState = { loading: null, ready: false };
+
+    function loadScapLibrary(){
+      if (scapState.ready) return Promise.resolve(true);
+      if (scapState.loading) return scapState.loading;
+      scapState.loading = new Promise(function(resolve){
+        function addScript(src, next){
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = next;
+          s.onerror = function(){ resolve(false); };
+          document.head.appendChild(s);
+        }
+        addScript('lg/cordova.webos.js', function(){
+          addScript('lg/signage.js', function(){
+            scapState.ready = typeof window.Signage === 'function';
+            resolve(scapState.ready);
+          });
+        });
+      });
+      return scapState.loading;
+    }
+
+    function captureScapScreenshot(){
+      return new Promise(function(resolve, reject){
+        loadScapLibrary().then(function(ready){
+          if (!ready) return reject(new Error('SCAP library unavailable'));
+          var settled = false;
+          var timer = setTimeout(function(){
+            if (settled) return;
+            settled = true;
+            reject(new Error('SCAP captureScreen timed out'));
+          }, 8000);
+          try {
+            new window.Signage().captureScreen(function(result){
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              var data = result && result.data;
+              if (!data || String(data).length < 1024) return reject(new Error('SCAP returned no image data'));
+              var enc = String(result.encoding || '').toLowerCase();
+              var mime = enc.indexOf('png') !== -1 ? 'image/png' : 'image/jpeg';
+              var dataUrl = String(data).indexOf('data:image/') === 0 ? String(data) : 'data:' + mime + ';base64,' + data;
+              var probe = new Image();
+              probe.onload = function(){
+                resolve({ dataUrl: dataUrl, type: 'native', native_method: 'scap_capture_screen', width: probe.width, height: probe.height });
+              };
+              probe.onerror = function(){
+                resolve({ dataUrl: dataUrl, type: 'native', native_method: 'scap_capture_screen' });
+              };
+              probe.src = dataUrl;
+            }, function(error){
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              reject(new Error('SCAP capture failed: ' + ((error && (error.errorText || error.errorCode)) || 'unknown')));
+            }, { save: false });
+          } catch(e){
+            if (!settled) { settled = true; clearTimeout(timer); reject(e); }
+          }
+        });
+      });
+    }
+
     function captureLgSiScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
@@ -3084,8 +3155,11 @@ window.ARENA_SIGNAGE_CONFIG = {
           captureDesktopBrowserScreenshot().then(resolve).catch(reject);
           return;
         }
-        if (details.platform === 'lg_si' && document.body.classList.contains('ads-active')) {
-          captureLgSiScreenshot().then(resolve).catch(reject);
+        if (details.platform === 'lg_si') {
+          captureScapScreenshot().then(resolve).catch(function(scapError){
+            try { reportPlayerError('screenshot_scap', String((scapError && scapError.message) || scapError || 'unknown'), {}); } catch(e){}
+            captureLgSiScreenshot().then(resolve).catch(reject);
+          });
           return;
         }
         var viewportWidth = Math.max(window.innerWidth || document.documentElement.clientWidth || 1, 1);
