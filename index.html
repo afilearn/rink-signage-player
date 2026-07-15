@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.3';
+    var PLAYER_VERSION = '1.4.4';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3136,7 +3136,20 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
       if (command.type === 'screenshot') {
         var nativeCapable = deviceCapabilities().screenshot_native;
-        var capture = nativeCapable ? captureNativeScreenshot().catch(function(){ return captureDomScreenshot(); }) : captureDomScreenshot();
+        /* PixelCopy cannot see hole-punched WebView/ExoPlayer video surfaces
+           on many Android devices, so a playing webm captures as black. When
+           a video ad is on screen, prefer the DOM capture (it decodes and
+           composites the current frame); keep native-first otherwise. */
+        var adNow = currentAdForCapture();
+        var videoAdPlaying = !!(adNow && adNow.media_type === 'video');
+        var capture;
+        if (!nativeCapable) {
+          capture = captureDomScreenshot();
+        } else if (videoAdPlaying) {
+          capture = captureDomScreenshot().catch(function(){ return captureNativeScreenshot(); });
+        } else {
+          capture = captureNativeScreenshot().catch(function(){ return captureDomScreenshot(); });
+        }
         capture.then(function(shot){ uploadScreenshot(command, shot); }).catch(function(e){
           deviceState.commandBusy = false;
           ackCommand(command.id, 'failed', {}, e.message || String(e));
