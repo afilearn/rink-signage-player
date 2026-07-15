@@ -3005,8 +3005,8 @@ window.ARENA_SIGNAGE_CONFIG = {
           s.onerror = function(){ resolve(false); };
           document.head.appendChild(s);
         }
-        addScript('lg/cordova.webos.js', function(){
-          addScript('lg/signage.js', function(){
+        addScript('lg-cordova.webos.js', function(){
+          addScript('lg-signage.js', function(){
             scapState.ready = typeof window.Signage === 'function';
             resolve(scapState.ready);
           });
