@@ -1057,8 +1057,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.2';
-    var PLAYER_UPDATED_AT = '2026-07-15T03:20:00.000Z';
+    var PLAYER_VERSION = '1.4.3';
+    var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2855,6 +2855,77 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    function loadLgSiImageForCapture(url){
+      return new Promise(function(resolve, reject){
+        if (!url) return reject(new Error('No LG SI image URL'));
+        var xhr = new XMLHttpRequest();
+        var objectUrl = '';
+        xhr.open('GET', mediaProxyUrl(url), true);
+        xhr.responseType = 'blob';
+        xhr.timeout = 8000;
+        xhr.onload = function(){
+          if (xhr.status < 200 || xhr.status >= 300 || !xhr.response) {
+            reject(new Error('LG SI image proxy returned ' + xhr.status));
+            return;
+          }
+          try { objectUrl = URL.createObjectURL(xhr.response); }
+          catch(e){ reject(e); return; }
+          var img = new Image();
+          img.onload = function(){
+            resolve({
+              image: img,
+              cleanup: function(){ try { URL.revokeObjectURL(objectUrl); } catch(e){} }
+            });
+          };
+          img.onerror = function(){
+            try { URL.revokeObjectURL(objectUrl); } catch(e){}
+            reject(new Error('LG SI could not decode the image ad'));
+          };
+          img.src = objectUrl;
+        };
+        xhr.onerror = function(){ reject(new Error('LG SI image proxy request failed')); };
+        xhr.ontimeout = function(){ reject(new Error('LG SI image proxy request timed out')); };
+        try { xhr.send(); } catch(e){ reject(e); }
+      });
+    }
+
+    function compositeLgSiAdIntoScreenshot(canvas, adSnapshot){
+      return new Promise(function(resolve){
+        try {
+          var target = screenshotAdRect(canvas);
+          if (!target) return resolve(canvas);
+          var ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(canvas);
+          var dx = target.x, dy = target.y, dw = target.w, dh = target.h;
+
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(dx, dy, dw, dh);
+
+          // LG SI screenshot capture must use the campaign snapshot taken before
+          // the live ad column is hidden. The old path inspected the live <img>
+          // after hiding/restoring it; Chrome 79 could report it as unavailable
+          // and incorrectly fall back to the proof panel for image campaigns.
+          if (adSnapshot && adSnapshot.media_type === 'image' && adSnapshot.media_url) {
+            loadLgSiImageForCapture(adSnapshot.media_url).then(function(result){
+              try { drawCover(ctx, result.image, dx, dy, dw, dh); }
+              catch(e){ drawProofFallback(ctx, dx, dy, dw, dh); }
+              try { result.cleanup(); } catch(e){}
+              resolve(canvas);
+            }).catch(function(){
+              drawProofFallback(ctx, dx, dy, dw, dh);
+              resolve(canvas);
+            });
+            return;
+          }
+
+          // Hardware-decoded LG video surfaces cannot be read reliably by DOM
+          // capture, so retain the established proof-of-play fallback for video.
+          drawProofFallback(ctx, dx, dy, dw, dh);
+          resolve(canvas);
+        } catch(e){ resolve(canvas); }
+      });
+    }
+
     function captureLgSiScreenshot(){
       return new Promise(function(resolve, reject){
         if (typeof window.html2canvas !== 'function') return reject(new Error('DOM screenshot library did not load'));
@@ -2864,6 +2935,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         var targetWidth = 1280;
         var targetHeight = Math.max(1, Math.round(targetWidth * viewportHeight / viewportWidth));
         var liveAdColumn = document.getElementById('ad-column');
+        var lgAdSnapshot = currentAdForCapture();
         var originalStyle = liveAdColumn ? liveAdColumn.getAttribute('style') : null;
         var hadIgnore = liveAdColumn ? liveAdColumn.hasAttribute('data-html2canvas-ignore') : false;
         var restored = false;
@@ -2930,7 +3002,7 @@ window.ARENA_SIGNAGE_CONFIG = {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
             ctx.drawImage(rawCanvas, 0, 0, rawCanvas.width, rawCanvas.height, 0, 0, finalCanvas.width, finalCanvas.height);
-            return compositeAdIntoScreenshot(finalCanvas);
+            return compositeLgSiAdIntoScreenshot(finalCanvas, lgAdSnapshot);
           }).then(function(canvas){
             resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
           }).catch(function(error){
