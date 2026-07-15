@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.4.6
+# ArenaSignage Player v1.4.7
 
 All files live flat in the repo root — upload every file on this level together
 (no subfolders needed).
@@ -35,3 +35,8 @@ All files live flat in the repo root — upload every file on this level togethe
 ### Unchanged
 Live playback, layout, ticker, NativePlayer bridge, reload commands, Worker,
 dashboard, and Supabase are untouched.
+
+## 1.4.7
+- When the Android APK reports `screenshot_video` (APK 1.5.1+), video-ad
+  screenshots use native PixelCopy with the video surface composited in —
+  full quality, exact on-screen frame. Older APKs keep the DOM fallback.

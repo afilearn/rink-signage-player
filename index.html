@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.6';
+    var PLAYER_VERSION = '1.4.7';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3275,10 +3275,16 @@ window.ARENA_SIGNAGE_CONFIG = {
            composites the current frame); keep native-first otherwise. */
         var adNow = currentAdForCapture();
         var videoAdPlaying = !!(adNow && adNow.media_type === 'video');
+        /* APK 1.5.1+ composites the ExoPlayer SurfaceView into PixelCopy
+           captures and advertises screenshot_video: native is then best for
+           video too. Older APKs capture the video plane as black, so those
+           fall back to DOM capture with a decoded frame. */
+        var nativeVideoCapable = false;
+        try { nativeVideoCapable = nativeCapabilities().screenshot_video === true; } catch(e){}
         var capture;
         if (!nativeCapable) {
           capture = captureDomScreenshot();
-        } else if (videoAdPlaying) {
+        } else if (videoAdPlaying && !nativeVideoCapable) {
           capture = captureDomScreenshot().catch(function(){ return captureNativeScreenshot(); });
         } else {
           capture = captureNativeScreenshot().catch(function(){ return captureDomScreenshot(); });
