@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.9';
+    var PLAYER_VERSION = '1.4.10';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3017,19 +3017,83 @@ window.ARENA_SIGNAGE_CONFIG = {
        input source, which would wake the panel into HDMI instead of the SI
        app. Screen-off keeps webOS and this player running, so heartbeats
        continue and the panel stays remotely controllable. */
-    function withScapPower(run, fail){
-      loadScapLibrary().then(function(){
-        if (typeof window.Power !== 'function') return fail(new Error('SCAP Power API unavailable'));
-        try { run(new window.Power()); } catch(e){ fail(e); }
-      });
+    /* Direct luna-bus calls through the cordova webOS service module.
+       The SCAP 1.2 power library hardcodes luna://com.webos.service.tv.signage,
+       which no longer exists on webOS 3.0+ signage firmware ("Service does not
+       exist"). Modern panels expose the same operations on
+       com.webos.service.tvpower, so each operation tries a candidate chain —
+       newest service first, legacy last — and reports which one answered. */
+    function lunaService(){
+      try {
+        if (window.cordova && typeof window.cordova.require === 'function') {
+          return window.cordova.require('cordova/plugin/webos/service');
+        }
+      } catch(e){}
+      return null;
+    }
+
+    function lunaTry(candidates, index, ok, fail, lastError){
+      if (index >= candidates.length) {
+        return fail(new Error(lastError || 'No luna power service responded'));
+      }
+      var c = candidates[index];
+      var service = lunaService();
+      if (!service) return fail(new Error('Luna bridge unavailable (cordova not loaded)'));
+      var settled = false;
+      var timer = setTimeout(function(){
+        if (settled) return;
+        settled = true;
+        lunaTry(candidates, index + 1, ok, fail, c.uri + ' timed out');
+      }, 4000);
+      try {
+        service.Request(c.uri, {
+          method: c.method,
+          parameters: c.parameters || {},
+          onSuccess: function(response){
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (response && response.returnValue === false) {
+              lunaTry(candidates, index + 1, ok, fail, c.uri + '/' + c.method + ' returned false');
+            } else {
+              ok(c.uri + '/' + c.method);
+            }
+          },
+          onFailure: function(error){
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            lunaTry(candidates, index + 1, ok, fail,
+              c.uri + '/' + c.method + ': ' + ((error && (error.errorText || error.errorCode)) || 'failed'));
+          }
+        });
+      } catch(e){
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          lunaTry(candidates, index + 1, ok, fail, c.uri + ': ' + (e.message || e));
+        }
+      }
     }
 
     function scapSetDisplay(mode, ok, fail){
-      withScapPower(function(power){
-        power.setDisplayMode(ok, function(err){
-          fail(new Error((err && (err.errorText || err.errorCode)) || 'setDisplayMode failed'));
-        }, { displayMode: mode === 'off' ? window.Power.DisplayMode.DISPLAY_OFF : window.Power.DisplayMode.DISPLAY_ON });
-      }, fail);
+      loadScapLibrary().then(function(){
+        var method = mode === 'off' ? 'turnOffScreen' : 'turnOnScreen';
+        lunaTry([
+          { uri: 'luna://com.webos.service.tvpower/power', method: method },
+          { uri: 'luna://com.webos.service.tv.signage', method: method }
+        ], 0, ok, fail);
+      });
+    }
+
+    function scapReboot(ok, fail){
+      loadScapLibrary().then(function(){
+        lunaTry([
+          { uri: 'luna://com.webos.service.tvpower/power', method: 'reboot', parameters: { reason: 'remoteMaintenance' } },
+          { uri: 'luna://com.palm.power/shutdown', method: 'machineReboot', parameters: { reason: 'remoteMaintenance' } },
+          { uri: 'luna://com.webos.service.tv.signage', method: 'reboot', parameters: { reason: 'unknown' } }
+        ], 0, ok, fail);
+      });
     }
 
     var POWER_SCHEDULE_KEY = 'asg_power_schedule';
@@ -3365,12 +3429,10 @@ window.ARENA_SIGNAGE_CONFIG = {
         ackCommand(command.id, 'completed', { action: 'reboot', initiated: true }, null, function(){
           deviceState.commandBusy = false;
           setTimeout(function(){
-            withScapPower(function(power){
-              power.executePowerCommand(function(){}, function(err){
-                reportPlayerError('power_reboot', (err && (err.errorText || err.errorCode)) || 'reboot rejected', { command_id: command.id });
-              }, { powerCommand: window.Power.PowerCommand.REBOOT });
+            scapReboot(function(usedService){
+              try { console.log('Reboot accepted by ' + usedService); } catch(e){}
             }, function(err){
-              reportPlayerError('power_reboot', (err && err.message) || 'SCAP unavailable', { command_id: command.id });
+              reportPlayerError('power_reboot', (err && err.message) || 'reboot rejected', { command_id: command.id });
             });
           }, 1500);
         });
@@ -3383,9 +3445,9 @@ window.ARENA_SIGNAGE_CONFIG = {
           ackCommand(command.id, 'failed', {}, 'Display power is only supported on LG webOS panels');
           return;
         }
-        scapSetDisplay(wantMode, function(){
+        scapSetDisplay(wantMode, function(usedService){
           deviceState.commandBusy = false;
-          ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode });
+          ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode, via: usedService });
         }, function(err){
           deviceState.commandBusy = false;
           ackCommand(command.id, 'failed', {}, (err && err.message) || 'setDisplayMode failed');
