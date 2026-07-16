@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.11';
+    var PLAYER_VERSION = '1.4.12';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3086,6 +3086,33 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    /* Best-effort: make the panel boot straight into the player after any
+       reboot or power loss. Factory default "Power On Status = standby"
+       leaves the panel dark after a restart until someone presses the
+       remote — fatal for unattended arena screens. Uses the storage service,
+       which is the SCAP service proven to exist on this firmware. */
+    var powerOnStatusEnsured = false;
+    function ensurePowerOnStatus(done){
+      var finish = function(){ if (typeof done === 'function') done(); };
+      if (powerOnStatusEnsured || platformDetails().platform !== 'lg_si') return finish();
+      loadScapLibrary().then(function(){
+        var service = lunaService();
+        if (!service) return finish();
+        try {
+          service.Request('luna://com.webos.service.commercial.signage.storageservice/settings/', {
+            method: 'set',
+            parameters: { category: 'commercial', settings: { powerOnStatus: 'power_on', wolEnable: '1' } },
+            onSuccess: function(){ powerOnStatusEnsured = true; finish(); },
+            onFailure: function(err){
+              try { console.log('powerOnStatus write rejected: ' + JSON.stringify(err)); } catch(e){}
+              finish();
+            }
+          });
+        } catch(e){ finish(); }
+      });
+    }
+    setTimeout(function(){ ensurePowerOnStatus(); }, 20000);
+
     function scapReboot(ok, fail){
       loadScapLibrary().then(function(){
         /* reason "SwDownload" is the firmware-whitelisted restart reason (the
@@ -3432,6 +3459,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         ackCommand(command.id, 'completed', { action: 'reboot', initiated: true }, null, function(){
           deviceState.commandBusy = false;
           setTimeout(function(){
+            ensurePowerOnStatus(function(){});
             scapReboot(function(usedService){
               try { console.log('Reboot accepted by ' + usedService); } catch(e){}
             }, function(err){
