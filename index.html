@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.12';
+    var PLAYER_VERSION = '1.4.13';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3113,16 +3113,43 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
     setTimeout(function(){ ensurePowerOnStatus(); }, 20000);
 
+    /* Reboot on this firmware is trial-and-error territory:
+       - com.webos.service.tv.signage (all SCAP libs) is absent/blocked here.
+       - com.palm.power/shutdown/machineReboot returns success but SHUTS the
+         panel DOWN without restarting it — confirmed on the 49UM5N. Removed.
+       Each attempt is reported to player_errors BEFORE the luna call fires,
+       so even if the panel dies mid-call the log shows which service did it. */
     function scapReboot(ok, fail){
       loadScapLibrary().then(function(){
-        /* reason "SwDownload" is the firmware-whitelisted restart reason (the
-           one LG's own software-update flow uses). Other reasons power the
-           panel DOWN without bringing it back up. */
-        lunaTry([
-          { uri: 'luna://com.palm.power/shutdown', method: 'machineReboot', parameters: { reason: 'SwDownload' } },
+        var candidates = [
           { uri: 'luna://com.webos.service.tvpower/power', method: 'reboot', parameters: { reason: 'SwDownload' } },
-          { uri: 'luna://com.webos.service.tv.signage', method: 'reboot', parameters: { reason: 'SwDownload' } }
-        ], 0, ok, fail);
+          { uri: 'luna://com.webos.service.sleep/shutdown', method: 'machineReboot', parameters: { reason: 'SwDownload' } }
+        ];
+        var failures = [];
+        function attempt(index){
+          if (index >= candidates.length) {
+            return fail(new Error('No reboot service worked: ' + failures.join(' | ')));
+          }
+          var c = candidates[index];
+          reportPlayerError('power_reboot_attempt', 'Trying ' + c.uri + '/' + c.method, {});
+          /* Give the report XHR a head start before the panel can go down. */
+          setTimeout(function(){
+            lunaTry([c], 0, function(used){
+              /* Luna accepted the call. If we are still alive in 15s the
+                 "success" was a lie (or a shutdown) — move to the next one. */
+              setTimeout(function(){
+                failures.push(used + ' accepted but panel did not restart');
+                reportPlayerError('power_reboot_attempt', used + ' accepted but no restart after 15s', {});
+                attempt(index + 1);
+              }, 15000);
+              ok(used);
+            }, function(err){
+              failures.push((err && err.message) || 'unknown');
+              attempt(index + 1);
+            });
+          }, 700);
+        }
+        attempt(0);
       });
     }
 
