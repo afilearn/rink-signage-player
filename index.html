@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.13';
+    var PLAYER_VERSION = '1.4.14';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3482,17 +3482,28 @@ window.ARENA_SIGNAGE_CONFIG = {
           ackCommand(command.id, 'failed', {}, 'Reboot is only supported on LG webOS panels');
           return;
         }
-        /* Ack first — the panel goes down before a later ack could be sent. */
-        ackCommand(command.id, 'completed', { action: 'reboot', initiated: true }, null, function(){
+        /* True OS reboot is blocked for URL-mode apps on this firmware:
+           every power service (tvpower/reboot, machineReboot) accepts the
+           call and then powers the panel DOWN without restarting — verified
+           on the 49UM5N via the power_reboot_attempt log trail. Instead we
+           soft power-cycle: backlight off -> on -> full player reload, which
+           recovers the display pipeline and the app without ever stranding
+           the panel in standby. */
+        ackCommand(command.id, 'completed', { action: 'soft_power_cycle', note: 'true reboot unsupported in SI URL mode' }, null, function(){
           deviceState.commandBusy = false;
-          setTimeout(function(){
-            ensurePowerOnStatus(function(){});
-            scapReboot(function(usedService){
-              try { console.log('Reboot accepted by ' + usedService); } catch(e){}
-            }, function(err){
-              reportPlayerError('power_reboot', (err && err.message) || 'reboot rejected', { command_id: command.id });
-            });
-          }, 1500);
+          scapSetDisplay('off', function(){
+            setTimeout(function(){
+              scapSetDisplay('on', function(){
+                setTimeout(function(){ try { window.location.reload(); } catch(e){} }, 2000);
+              }, function(){
+                /* never leave the screen dark, even on failure */
+                setTimeout(function(){ try { window.location.reload(); } catch(e){} }, 2000);
+              });
+            }, 4000);
+          }, function(err){
+            reportPlayerError('power_cycle', (err && err.message) || 'screen-off failed', { command_id: command.id });
+            setTimeout(function(){ try { window.location.reload(); } catch(e){} }, 1000);
+          });
         });
         return;
       }
