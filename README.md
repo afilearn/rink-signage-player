@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.4.7
+# ArenaSignage Player v1.4.8
 
 All files live flat in the repo root — upload every file on this level together
 (no subfolders needed).
@@ -10,6 +10,7 @@ All files live flat in the repo root — upload every file on this level togethe
 - `logo.png` — fallback logo
 - `lg-cordova.webos.js` — LG SCAP bridge (loaded lazily, only on LG SI panels)
 - `lg-signage.js` — LG SCAP Signage API (captureScreen)
+- `lg-power.js` — LG SCAP Power API (reboot, display on/off)
 
 `player-inline.js` from older versions is no longer used and can be deleted.
 
@@ -40,3 +41,13 @@ dashboard, and Supabase are untouched.
 - When the Android APK reports `screenshot_video` (APK 1.5.1+), video-ad
   screenshots use native PixelCopy with the video surface composited in —
   full quality, exact on-screen frame. Older APKs keep the DOM fallback.
+
+## 1.4.8 — LG power control
+- New remote commands on LG SI panels: `reboot`, `display_power` (backlight
+  on/off), and `set_power_schedule` (weekly on/off times, panel-local time).
+- Scheduled on/off is executed by the player via SCAP `setDisplayMode` —
+  LG's native on-timers would wake the panel into an HDMI input instead of
+  the SI app. Screen-off keeps webOS and the player running, so heartbeats
+  and remote control keep working while the backlight is off.
+- New file `lg-power.js` (SCAP Power API) — upload it with the others.
+- Screenshot capture paths are untouched.

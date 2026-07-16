@@ -1057,7 +1057,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.7';
+    var PLAYER_VERSION = '1.4.8';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2424,9 +2424,13 @@ window.ARENA_SIGNAGE_CONFIG = {
           if (bridges[i] && bridges[i].restartApp !== undefined) { restart = true; break; }
         } catch(e){}
       }
+      var isLg = platformDetails().platform === 'lg_si';
       return {
         reload: true,
         restart_app: restart,
+        reboot: isLg,
+        display_power: isLg,
+        power_schedule: isLg,
         screenshot_native: caps.screenshot_native === true,
         screenshot_method: caps.screenshot_method || '',
         native_app_version: caps.app_version || '',
@@ -2985,6 +2989,68 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+    /* ── LG SCAP power control ──────────────────────────────────────────
+       Reboot and backlight on/off via the SCAP Power API. The scheduled
+       on/off runs INSIDE the player (checked every 30s against panel-local
+       time) using setDisplayMode: LG's native on-timers require an ext://
+       input source, which would wake the panel into HDMI instead of the SI
+       app. Screen-off keeps webOS and this player running, so heartbeats
+       continue and the panel stays remotely controllable. */
+    function withScapPower(run, fail){
+      loadScapLibrary().then(function(){
+        if (typeof window.Power !== 'function') return fail(new Error('SCAP Power API unavailable'));
+        try { run(new window.Power()); } catch(e){ fail(e); }
+      });
+    }
+
+    function scapSetDisplay(mode, ok, fail){
+      withScapPower(function(power){
+        power.setDisplayMode(ok, function(err){
+          fail(new Error((err && (err.errorText || err.errorCode)) || 'setDisplayMode failed'));
+        }, { displayMode: mode === 'off' ? window.Power.DisplayMode.DISPLAY_OFF : window.Power.DisplayMode.DISPLAY_ON });
+      }, fail);
+    }
+
+    var POWER_SCHEDULE_KEY = 'asg_power_schedule';
+    var powerScheduleLastFired = '';
+
+    function readPowerSchedule(){
+      try {
+        var raw = localStorage.getItem(POWER_SCHEDULE_KEY);
+        if (!raw) return null;
+        var s = JSON.parse(raw);
+        return s && s.enabled ? s : null;
+      } catch(e){ return null; }
+    }
+
+    function validPowerSchedule(p){
+      var timeOk = function(t){ return typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t); };
+      if (!p || typeof p !== 'object') return false;
+      if (p.enabled !== true) return true; // clearing is always valid
+      if (!timeOk(p.on_time) || !timeOk(p.off_time) || p.on_time === p.off_time) return false;
+      if (!Array.isArray(p.days) || !p.days.length) return false;
+      for (var i=0;i<p.days.length;i++){ var d = Number(p.days[i]); if (!(d>=0 && d<=6)) return false; }
+      return true;
+    }
+
+    function checkPowerSchedule(){
+      if (platformDetails().platform !== 'lg_si') return;
+      var schedule = readPowerSchedule();
+      if (!schedule) return;
+      var now = new Date();
+      var hm = ('0'+now.getHours()).slice(-2) + ':' + ('0'+now.getMinutes()).slice(-2);
+      if (schedule.days.indexOf(now.getDay()) === -1) return;
+      var action = hm === schedule.off_time ? 'off' : (hm === schedule.on_time ? 'on' : null);
+      if (!action) return;
+      var fireKey = now.toDateString() + '|' + hm + '|' + action;
+      if (powerScheduleLastFired === fireKey) return;
+      powerScheduleLastFired = fireKey;
+      scapSetDisplay(action, function(){}, function(err){
+        reportPlayerError('power_schedule', (err && err.message) || 'scheduled display switch failed', { action: action, at: hm });
+      });
+    }
+    setInterval(checkPowerSchedule, 30000);
+
     /* ── LG SCAP screen capture ─────────────────────────────────────────
        webOS Chrome cannot drawImage() hardware-plane video (black frames),
        so DOM capture can never include a playing webm. The SCAP API's
@@ -2998,17 +3064,18 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (scapState.ready) return Promise.resolve(true);
       if (scapState.loading) return scapState.loading;
       scapState.loading = new Promise(function(resolve){
-        function addScript(src, next){
+        function addScript(src, next, optional){
           var s = document.createElement('script');
           s.src = src;
           s.onload = next;
-          s.onerror = function(){ resolve(false); };
+          s.onerror = function(){ if (optional) next(); else resolve(false); };
           document.head.appendChild(s);
         }
         addScript('lg-cordova.webos.js', function(){
           addScript('lg-signage.js', function(){
             scapState.ready = typeof window.Signage === 'function';
-            resolve(scapState.ready);
+            /* Power API is optional — screenshots never depend on it. */
+            addScript('lg-power.js', function(){ resolve(scapState.ready); }, true);
           });
         });
       });
@@ -3261,6 +3328,79 @@ window.ARENA_SIGNAGE_CONFIG = {
           else if (window.NativePlayer && typeof window.NativePlayer.restartApp === 'function') { supported = true; window.NativePlayer.restartApp(); }
           if (!supported) throw new Error('App restart is not supported on this player');
           ackCommand(command.id, 'completed', { action: 'restart_app' });
+        } catch(e){
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, e.message || String(e));
+        }
+        return;
+      }
+      if (command.type === 'reboot') {
+        if (platformDetails().platform !== 'lg_si') {
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, 'Reboot is only supported on LG webOS panels');
+          return;
+        }
+        /* Ack first — the panel goes down before a later ack could be sent. */
+        ackCommand(command.id, 'completed', { action: 'reboot', initiated: true }, null, function(){
+          deviceState.commandBusy = false;
+          setTimeout(function(){
+            withScapPower(function(power){
+              power.executePowerCommand(function(){}, function(err){
+                reportPlayerError('power_reboot', (err && (err.errorText || err.errorCode)) || 'reboot rejected', { command_id: command.id });
+              }, { powerCommand: window.Power.PowerCommand.REBOOT });
+            }, function(err){
+              reportPlayerError('power_reboot', (err && err.message) || 'SCAP unavailable', { command_id: command.id });
+            });
+          }, 1500);
+        });
+        return;
+      }
+      if (command.type === 'display_power') {
+        var wantMode = command.payload && command.payload.mode === 'off' ? 'off' : 'on';
+        if (platformDetails().platform !== 'lg_si') {
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, 'Display power is only supported on LG webOS panels');
+          return;
+        }
+        scapSetDisplay(wantMode, function(){
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode });
+        }, function(err){
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, (err && err.message) || 'setDisplayMode failed');
+        });
+        return;
+      }
+      if (command.type === 'set_power_schedule') {
+        if (platformDetails().platform !== 'lg_si') {
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, 'Power schedule is only supported on LG webOS panels');
+          return;
+        }
+        var proposed = command.payload || {};
+        if (!validPowerSchedule(proposed)) {
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'failed', {}, 'Invalid schedule: need on_time/off_time as HH:MM and at least one day');
+          return;
+        }
+        try {
+          if (proposed.enabled === true) {
+            localStorage.setItem(POWER_SCHEDULE_KEY, JSON.stringify({
+              enabled: true, on_time: proposed.on_time, off_time: proposed.off_time,
+              days: proposed.days.map(Number)
+            }));
+          } else {
+            localStorage.removeItem(POWER_SCHEDULE_KEY);
+          }
+          powerScheduleLastFired = '';
+          loadScapLibrary(); // warm the Power API so the first trigger fires on time
+          deviceState.commandBusy = false;
+          ackCommand(command.id, 'completed', {
+            action: 'set_power_schedule',
+            schedule: proposed.enabled === true
+              ? { on_time: proposed.on_time, off_time: proposed.off_time, days: proposed.days }
+              : null
+          });
         } catch(e){
           deviceState.commandBusy = false;
           ackCommand(command.id, 'failed', {}, e.message || String(e));
