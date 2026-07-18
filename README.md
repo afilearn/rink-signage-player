@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.4.14
+# ArenaSignage Player v1.5.0
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -74,3 +74,22 @@ v1.4.14 before testing anything else.
 ### Unchanged throughout
 Live playback, layout, ticker, NativePlayer bridge, Worker, dashboard, and
 Supabase schema (beyond the documented command types) are untouched.
+
+### 1.5.0 — ad engine: fullscreen, dayparting, house slots, portrait
+- Campaign placement: side rail or fullscreen. Fullscreen ads form their own
+  weighted rotation automatically from targeting + weight.
+- Per-screen ad layout (set in admin → Devices → Ad layout):
+  off = schedule + side ads; interval = fullscreen takeover every N minutes
+  (counted from the end of the previous takeover, never cuts a side ad off
+  mid-play, GPU-composited slide in/out); always = fullscreen ad board.
+- Dayparting (time-of-day window, overnight wrap supported) and day-of-week
+  targeting, evaluated in panel-local time and re-checked continuously.
+- House ads play only when no paid ad is eligible for the same slot.
+- Fullscreen video audio is a per-screen toggle (browser/LG; Android native
+  volume follows the device).
+- Orientation per screen: auto-detect (portrait viewports already stack the
+  layout), or force portrait/landscape for panels whose viewport does not
+  match their mounting.
+- Takeovers reuse the existing playback engine — LG decoder handling,
+  NativePlayer bridge, crossfade, screenshots, and proof-of-play all apply
+  unchanged. Requires Worker 1.3.7.

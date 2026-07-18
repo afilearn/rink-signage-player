@@ -834,6 +834,60 @@ window.ARENA_SIGNAGE_CONFIG = {
       body.ads-active #realtime-status{ right:1vw; }
     }
 
+    /* ============================================================
+       FULLSCREEN AD MODES (v1.5)
+       fs-takeover : the ad column expands over the whole viewport for one
+                     item, GPU-composited slide (TV-safe: transform only).
+       fs-only     : permanent fullscreen ad board — schedule hidden.
+       ============================================================ */
+    @keyframes fs-slide-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes fs-slide-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+    body.fs-takeover #ad-column,
+    body.fs-only #ad-column{
+      top:0 !important; bottom:auto !important; left:0 !important; right:0 !important;
+      width:100vw !important; height:100vh !important; max-width:100vw !important;
+      border:none !important;
+    }
+    body.fs-takeover #ad-column{ animation: fs-slide-in 0.45s cubic-bezier(0.32,0.72,0,1); }
+    body.fs-takeover.fs-leaving #ad-column{ animation: fs-slide-out 0.45s cubic-bezier(0.32,0.72,0,1) forwards; }
+    body.fs-only #header, body.fs-only #event-screen, body.fs-only #empty-screen,
+    body.fs-only #combined-display, body.fs-only #ticker, body.fs-only #realtime-status,
+    body.fs-only #tomorrow-note{ display:none !important; }
+    @media (prefers-reduced-motion: reduce){
+      body.fs-takeover #ad-column, body.fs-takeover.fs-leaving #ad-column{ animation:none; }
+    }
+
+    /* Forced orientation (per-screen setting; 'auto' relies on the media
+       query above). force-portrait replicates the portrait geometry in a
+       landscape viewport; force-landscape restores landscape geometry inside
+       a portrait viewport. */
+    body.force-portrait.ads-active #ad-column{
+      top:auto; bottom:0; right:0; left:0;
+      width:100vw; height:30vh;
+      border-left:none; border-top:2px solid rgba(255,255,255,0.08);
+    }
+    body.force-portrait.ads-active #header{ width:100vw; max-width:100vw; }
+    body.force-portrait.ads-active #event-screen,
+    body.force-portrait.ads-active #empty-screen,
+    body.force-portrait.ads-active #combined-display,
+    body.force-portrait.ads-active #code-screen{ width:100vw; max-width:100vw; height:70vh; }
+    body.force-portrait.ads-active #ticker{ width:100vw; bottom:30vh; }
+    body.force-portrait.ads-active #realtime-status{ right:1vw; }
+    @media (orientation: portrait){
+      body.force-landscape.ads-active #ad-column{
+        top:0; bottom:auto; right:0; left:auto;
+        width:30vw; height:100vh;
+        border-top:none; border-left:2px solid rgba(255,255,255,0.08);
+      }
+      body.force-landscape.ads-active #header,
+      body.force-landscape.ads-active #event-screen,
+      body.force-landscape.ads-active #empty-screen,
+      body.force-landscape.ads-active #combined-display,
+      body.force-landscape.ads-active #code-screen{ width:70vw; max-width:70vw; height:auto; }
+      body.force-landscape.ads-active #ticker{ width:70vw; bottom:0; }
+      body.force-landscape.ads-active #realtime-status{ right:31vw; }
+    }
+
     /* Combined schedule columns: large enough for viewing at a distance,
        while keeping overnight time ranges on one line. */
     .rink-panel-events {
@@ -1057,7 +1111,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.4.14';
+    var PLAYER_VERSION = '1.5.0';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -1293,7 +1347,7 @@ window.ARENA_SIGNAGE_CONFIG = {
 
         // Combined mode bypasses maybeRender, so run the shared per-poll
         // updates here too: ads column, ticker text, live progress.
-        try { updateAds(data && data.ads); } catch(e){}
+        try { applyAdConfig(data); } catch(e){}
         try { updateTickerText((data && (data.announcement || data.ticker_text)) || ''); } catch(e){}
         try { updateLiveProgressBars(); } catch(e){}
         return true;
@@ -3837,6 +3891,126 @@ window.ARENA_SIGNAGE_CONFIG = {
     // WebView's grey play-button overlay is never visible between ads.
     var ADS = { list: [], idx: 0, sig: '', imgTimer: null, active: null, swapping: false };
 
+    /* ── Ad engine v1.5: placements, dayparts, house slots, takeovers ──
+       The fullscreen system reuses the existing rotation engine: a takeover
+       simply feeds it one fullscreen item while CSS expands the ad column
+       over the viewport, so crossfade, NativePlayer, LG decoder handling and
+       proof-of-play all behave exactly as in the side rail. */
+    var AD_CFG = {
+      raw: [],                   // ads as delivered by the worker
+      mode: 'off',               // off | interval | always
+      intervalMin: 10,
+      audio: false,
+      orientation: 'auto'
+    };
+    var TAKEOVER = {
+      active: false, pending: false, leaving: false,
+      rotation: [], rotIdx: 0,
+      lastEnd: 0                 // interval counts from the END of the last takeover
+    };
+
+    function adEligibleNow(ad, now){
+      now = now || new Date();
+      if (ad.days && ad.days.length > 0 && ad.days.length < 7 && ad.days.indexOf(now.getDay()) === -1) return false;
+      var s = ad.daypart_start ? String(ad.daypart_start).slice(0, 5) : null;
+      var e = ad.daypart_end ? String(ad.daypart_end).slice(0, 5) : null;
+      if (s && e){
+        var hm = ('0'+now.getHours()).slice(-2) + ':' + ('0'+now.getMinutes()).slice(-2);
+        var inside = s <= e ? (hm >= s && hm <= e) : (hm >= s || hm <= e); // overnight wrap
+        if (!inside) return false;
+      }
+      return true;
+    }
+
+    function poolFor(placement){
+      var now = new Date();
+      var paid = [], house = [];
+      for (var i = 0; i < AD_CFG.raw.length; i++){
+        var ad = AD_CFG.raw[i];
+        if ((ad.placement || 'side') !== placement) continue;
+        if (!adEligibleNow(ad, now)) continue;
+        (ad.house ? house : paid).push(ad);
+      }
+      return paid.length ? paid : house; // house ads fill only empty slots
+    }
+
+    function applyAdConfig(data){
+      if (data){
+        AD_CFG.raw = Array.isArray(data.ads) ? data.ads : [];
+        AD_CFG.mode = data.fullscreen_mode === 'interval' || data.fullscreen_mode === 'always' ? data.fullscreen_mode : 'off';
+        AD_CFG.intervalMin = Math.min(240, Math.max(1, Number(data.fullscreen_interval_min) || 10));
+        AD_CFG.audio = data.fullscreen_audio === true;
+        AD_CFG.orientation = data.orientation === 'portrait' || data.orientation === 'landscape' ? data.orientation : 'auto';
+      }
+      if (document.body){
+        document.body.classList.toggle('force-portrait', AD_CFG.orientation === 'portrait');
+        document.body.classList.toggle('force-landscape', AD_CFG.orientation === 'landscape');
+      }
+      if (TAKEOVER.active) return;               // re-applied when the takeover ends
+      var fsPool = poolFor('fullscreen');
+      if (AD_CFG.mode === 'always' && fsPool.length){
+        if (document.body) document.body.classList.add('fs-only');
+        updateAds(fsPool);
+        return;
+      }
+      if (document.body) document.body.classList.remove('fs-only');
+      updateAds(poolFor('side'));
+    }
+
+    function beginTakeover(){
+      var fsPool = poolFor('fullscreen');
+      TAKEOVER.pending = false;
+      if (!fsPool.length || TAKEOVER.active || AD_CFG.mode !== 'interval') { TAKEOVER.lastEnd = Date.now(); return; }
+      TAKEOVER.rotation = buildRotation(fsPool);
+      var item = TAKEOVER.rotation[TAKEOVER.rotIdx % TAKEOVER.rotation.length];
+      TAKEOVER.rotIdx += 1;
+      TAKEOVER.active = true;
+      TAKEOVER.leaving = false;
+      // Release side media FIRST — LG panels have one reliable hardware
+      // decoder, and it must be free before the fullscreen video starts.
+      stopAllAdMedia();
+      if (document.body){
+        document.body.classList.add('ads-active');
+        document.body.classList.add('fs-takeover');
+        document.body.classList.remove('fs-leaving');
+      }
+      ADS.list = [item];
+      ADS.idx = 0;
+      ADS.sig = 'takeover:' + item.id;
+      playCurrentAd();
+    }
+
+    function endTakeover(){
+      if (!TAKEOVER.active || TAKEOVER.leaving) return;
+      TAKEOVER.leaving = true;
+      if (document.body) document.body.classList.add('fs-leaving');
+      setTimeout(function(){
+        stopAllAdMedia();
+        if (document.body){
+          document.body.classList.remove('fs-takeover');
+          document.body.classList.remove('fs-leaving');
+        }
+        TAKEOVER.active = false;
+        TAKEOVER.leaving = false;
+        TAKEOVER.lastEnd = Date.now();
+        ADS.sig = '';                             // force the side list to rebuild
+        applyAdConfig(null);
+      }, 470);
+    }
+
+    // Takeover scheduler + eligibility refresh (dayparts change over the day)
+    setInterval(function(){
+      try { if (!TAKEOVER.active) applyAdConfig(null); } catch(e){}
+      try {
+        if (AD_CFG.mode !== 'interval' || TAKEOVER.active || TAKEOVER.pending) return;
+        if (!poolFor('fullscreen').length) return;
+        if (Date.now() - TAKEOVER.lastEnd < AD_CFG.intervalMin * 60000) return;
+        TAKEOVER.pending = true;
+        // No side ad mid-play to wait for? Take over immediately.
+        if (!ADS.list.length) beginTakeover();
+      } catch(e){}
+    }, 20000);
+
     // Native ExoPlayer bridge (ArenaSignage Android player). Hardware-decoded
     // video + disk cache. Falls back to <video> double-buffering elsewhere.
     function hasNativePlayer(){
@@ -3855,7 +4029,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       var r = adColumnRect();
       if (!r || r.w < 2 || r.h < 2){ setTimeout(function(){ playCurrentAd(); }, 300); return; }
       try {
-        window.NativePlayer.play(String(ad.id), ad.media_url, r.x, r.y, r.w, r.h, ADS.list.length === 1);
+        window.NativePlayer.play(String(ad.id), ad.media_url, r.x, r.y, r.w, r.h, ADS.list.length === 1 && !TAKEOVER.active);
         var nxt = adAt(1);
         if (nxt && nxt.media_type !== 'image' && nxt.media_url !== ad.media_url){
           window.NativePlayer.preload(nxt.media_url);
@@ -3869,7 +4043,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ev === 'ended'){
         var ad = adAt(0);
         if (ad) reportPlay(ad.id);
-        nextAd();
+        nextAd();                        // during a takeover this ends it
       } else if (ev === 'looped'){
         var ad2 = adAt(0);
         if (ad2) reportPlay(ad2.id);   // proof-of-play per loop of a single-ad rotation
@@ -4043,11 +4217,12 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       // Single-ad rotation: use exactly one video decoder/surface.
       // Do not preload the same URL into the hidden buffer on LG SI/webOS.
-      if (ADS.list.length === 1){
+      if (ADS.list.length === 1 && !TAKEOVER.active){
         var v0 = ADS.active || els.a;
         var hidden = (v0 === els.a) ? els.b : els.a;
         ADS.active = v0;
         v0.loop = true;
+        try { v0.muted = true; } catch(e){}
 
         // Release the hidden decoder completely. Keeping the same media loaded
         // in both elements can make commercial LG screens show black.
@@ -4072,8 +4247,10 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
 
       // Double-buffer swap: play into the element that is NOT showing.
+      // (Takeovers also use this path so the item plays exactly once.)
       var incoming = (ADS.active === els.a) ? els.b : els.a;
       incoming.loop = false;
+      try { incoming.muted = !(TAKEOVER.active && AD_CFG.audio); } catch(e){}
       var incomingMediaUrl = mediaProxyUrl(ad.media_url);
       if (incoming.getAttribute('src') !== incomingMediaUrl){
         prepareMediaElementForUrl(incoming, incomingMediaUrl);
@@ -4123,6 +4300,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function nextAd(){
+      if (TAKEOVER.active){ endTakeover(); return; }          // takeover plays exactly once
+      if (TAKEOVER.pending){ beginTakeover(); return; }       // start at the item boundary
       if (!ADS.list.length) return;
       ADS.idx = (ADS.idx + 1) % ADS.list.length;   // loop back to first
       playCurrentAd();
@@ -4156,12 +4335,12 @@ window.ARENA_SIGNAGE_CONFIG = {
           if (v !== ADS.active) return;
           var ad = adAt(0);
           if (ad) reportPlay(ad.id);
-          if (ADS.list.length === 1){
+          if (ADS.list.length === 1 && !TAKEOVER.active){
             // Fallback for TV engines that ignore the loop property.
             try { v.currentTime = 0; } catch(e){}
             startWhenReady(v);
           } else {
-            nextAd();
+            nextAd();   // takeovers end here; rotations advance
           }
         });
 
@@ -4536,14 +4715,14 @@ window.ARENA_SIGNAGE_CONFIG = {
       
       if (sig && sig === state.lastSignature){ 
         updateTickerText((data && (data.announcement || data.ticker_text)) || '');
-        updateAds(data && data.ads);
+        applyAdConfig(data);
         updateTomorrow(data);
         updateLiveProgressBars(); 
         return; 
       }
       
       state.lastSignature = sig;
-      updateAds(data && data.ads);
+      applyAdConfig(data);
       updateTomorrow(data);
       setCacheWithExpiry('last_payload_' + state.screenCode, data);
       renderFromPayload(data);
