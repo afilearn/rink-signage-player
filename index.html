@@ -857,12 +857,13 @@ window.ARENA_SIGNAGE_CONFIG = {
        fullscreen-only ad board and the facility slide zone. */
     @keyframes trans-slide-in { from { transform: translateX(6%); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes trans-zoom-in { from { transform: scale(1.08); opacity: 0; } to { transform: none; opacity: 1; } }
-    .trans-fade{ transition-duration: 0.6s !important; }
+    @keyframes trans-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .trans-fade{ animation: trans-fade-in 0.7s ease; }
     .trans-slide{ animation: trans-slide-in 0.6s cubic-bezier(0.32,0.72,0,1); }
     .trans-zoom{ animation: trans-zoom-in 0.7s cubic-bezier(0.32,0.72,0,1); }
     .trans-none{ transition:none !important; animation:none !important; }
     @media (prefers-reduced-motion: reduce){
-      .trans-slide, .trans-zoom{ animation:none; }
+      .trans-fade, .trans-slide, .trans-zoom{ animation:none; }
     }
 
     /* ============================================================
@@ -1149,7 +1150,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     } catch(e){}
 
-    var PLAYER_VERSION = '1.5.3';
+    var PLAYER_VERSION = '1.5.4';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4432,6 +4433,9 @@ window.ARENA_SIGNAGE_CONFIG = {
         prepareMediaElementForUrl(els.img, imageMediaUrl);
         els.img.src = imageMediaUrl;
         els.img.style.display = 'block';
+        try {
+          if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(els.img);
+        } catch(e){}
         try { if (ADS.active) ADS.active.pause(); } catch(e){}
         var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
         ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
