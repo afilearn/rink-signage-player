@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.4
+# ArenaSignage Player v1.5.6
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -129,3 +129,14 @@ Supabase schema (beyond the documented command types) are untouched.
   (schedule + ads, slides + ads). In Fullscreen-only mode ads fill the
   viewport regardless — rotate vertically-mounted panels at the panel level
   (LG OSD Rotation / Android display settings).
+
+### 1.5.5 — CSS portrait for fullscreen-only
+- Orientation = Portrait in Fullscreen-only mode now rotates the ad output
+  90° in CSS — no panel hardware rotation needed. LG and browser rotate
+  everything; Android boxes serve image ads only when rotated (the native
+  video surface cannot be CSS-rotated).
+
+### 1.5.6 — native rotation handshake
+- With Android APK 1.5.2+, rotated fullscreen-only screens play webm too:
+  the player calls NativePlayer.setRotation(90) and the app renders video
+  through a rotatable TextureView. Older APKs keep the image-only filter.
