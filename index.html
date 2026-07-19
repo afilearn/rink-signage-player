@@ -834,6 +834,37 @@ window.ARENA_SIGNAGE_CONFIG = {
       body.ads-active #realtime-status{ right:1vw; }
     }
 
+    /* ── Facility slide zone (left zone in 'slides' content mode) ── */
+    #slide-zone{ display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; overflow:hidden; }
+    body.ads-active #slide-zone{ width:70vw; }
+    body.slides-mode #slide-zone{ display:block; }
+    body.slides-mode #header, body.slides-mode #event-screen, body.slides-mode #empty-screen,
+    body.slides-mode #tomorrow-note{ display:none !important; }
+    #slide-zone img{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
+      opacity:0; transition:opacity 0.6s ease;
+    }
+    #slide-zone img.showing{ opacity:1; }
+    @media (orientation: portrait){
+      body.ads-active #slide-zone{ width:100vw; height:70vh; }
+    }
+    body.force-portrait.ads-active #slide-zone{ width:100vw; height:70vh; }
+    @media (orientation: portrait){
+      body.force-landscape.ads-active #slide-zone{ width:70vw; height:100vh; }
+    }
+
+    /* Selectable transitions (GPU-only: opacity/transform) for the
+       fullscreen-only ad board and the facility slide zone. */
+    @keyframes trans-slide-in { from { transform: translateX(6%); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes trans-zoom-in { from { transform: scale(1.08); opacity: 0; } to { transform: none; opacity: 1; } }
+    .trans-fade{ transition-duration: 0.6s !important; }
+    .trans-slide{ animation: trans-slide-in 0.6s cubic-bezier(0.32,0.72,0,1); }
+    .trans-zoom{ animation: trans-zoom-in 0.7s cubic-bezier(0.32,0.72,0,1); }
+    .trans-none{ transition:none !important; animation:none !important; }
+    @media (prefers-reduced-motion: reduce){
+      .trans-slide, .trans-zoom{ animation:none; }
+    }
+
     /* ============================================================
        FULLSCREEN AD MODES (v1.5)
        fs-takeover : the ad column expands over the whole viewport for one
@@ -1054,6 +1085,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   <div id="ticker"><div id="ticker-track"></div></div>
 
   
+  <div id="slide-zone" aria-hidden="true"><img id="slide-a" alt=""><img id="slide-b" alt=""></div>
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
@@ -1117,7 +1149,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     } catch(e){}
 
-    var PLAYER_VERSION = '1.5.2';
+    var PLAYER_VERSION = '1.5.3';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3993,8 +4025,75 @@ window.ARENA_SIGNAGE_CONFIG = {
       mode: 'off',               // off | interval | always
       intervalMin: 10,
       audio: false,
-      orientation: 'auto'
+      orientation: 'auto',
+      contentMode: 'schedule',
+      transition: 'fade',
+      slides: []
     };
+
+    var SLIDES = { list: [], idx: 0, timer: null, active: null, sig: '' };
+
+    function applyTransitionClass(el){
+      if (!el) return;
+      el.classList.remove('trans-fade','trans-slide','trans-zoom','trans-none');
+      if (AD_CFG.transition === 'none'){ el.classList.add('trans-none'); return; }
+      void el.offsetWidth; // restart the animation
+      el.classList.add('trans-' + AD_CFG.transition);
+    }
+
+    function slideEls(){
+      return { a: document.getElementById('slide-a'), b: document.getElementById('slide-b') };
+    }
+
+    function stopSlides(){
+      if (SLIDES.timer){ clearTimeout(SLIDES.timer); SLIDES.timer = null; }
+      var els = slideEls();
+      [els.a, els.b].forEach(function(img){ if (img){ img.classList.remove('showing'); } });
+      SLIDES.active = null;
+      SLIDES.list = [];
+      SLIDES.sig = '';
+      if (document.body) document.body.classList.remove('slides-mode');
+    }
+
+    function showNextSlide(){
+      if (!SLIDES.list.length) return;
+      var els = slideEls();
+      if (!els.a || !els.b) return;
+      var slide = SLIDES.list[SLIDES.idx % SLIDES.list.length];
+      SLIDES.idx += 1;
+      var incoming = (SLIDES.active === els.a) ? els.b : els.a;
+      var outgoing = SLIDES.active;
+      incoming.crossOrigin = 'anonymous';
+      incoming.onload = function(){
+        applyTransitionClass(incoming);
+        incoming.classList.add('showing');
+        if (outgoing) outgoing.classList.remove('showing');
+        SLIDES.active = incoming;
+      };
+      incoming.onerror = function(){
+        // Skip broken slides rather than blanking the zone.
+        SLIDES.timer = setTimeout(showNextSlide, 1500);
+        return;
+      };
+      incoming.src = mediaProxyUrl(slide.media_url);
+      var duration = Math.min(120, Math.max(3, Number(slide.duration_sec) || 10)) * 1000;
+      if (SLIDES.timer) clearTimeout(SLIDES.timer);
+      SLIDES.timer = setTimeout(showNextSlide, duration);
+    }
+
+    function applySlides(){
+      // Slides never run in combined mode (two schedules own the layout).
+      var want = AD_CFG.contentMode === 'slides' && AD_CFG.slides.length > 0 &&
+        !(document.body && document.body.classList.contains('combined-mode'));
+      if (!want){ if (SLIDES.sig) stopSlides(); return; }
+      var sig = AD_CFG.slides.map(function(s){ return s.id + ':' + s.media_url + ':' + s.duration_sec; }).join('|');
+      if (document.body) document.body.classList.add('slides-mode');
+      if (sig === SLIDES.sig) return;   // playlist unchanged — keep rotating
+      SLIDES.sig = sig;
+      SLIDES.list = AD_CFG.slides.slice();
+      SLIDES.idx = 0;
+      showNextSlide();
+    }
     var TAKEOVER = {
       active: false, pending: false, leaving: false,
       rotation: [], rotIdx: 0,
@@ -4036,6 +4135,12 @@ window.ARENA_SIGNAGE_CONFIG = {
           urls.push(u);
           try { urls.push(mediaProxyUrl(u)); } catch(e){}
         }
+        for (var j = 0; j < AD_CFG.slides.length; j++){
+          var su = AD_CFG.slides[j].media_url;
+          if (!su) continue;
+          urls.push(su);
+          try { urls.push(mediaProxyUrl(su)); } catch(e){}
+        }
         navigator.serviceWorker.controller.postMessage({ type: 'asg-media-keep', urls: urls });
       } catch(e){}
     }
@@ -4047,7 +4152,11 @@ window.ARENA_SIGNAGE_CONFIG = {
         AD_CFG.intervalMin = Math.min(240, Math.max(1, Number(data.fullscreen_interval_min) || 10));
         AD_CFG.audio = data.fullscreen_audio === true;
         AD_CFG.orientation = data.orientation === 'portrait' || data.orientation === 'landscape' ? data.orientation : 'auto';
+        AD_CFG.contentMode = data.content_mode === 'slides' ? 'slides' : 'schedule';
+        AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
+        AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
       }
+      try { applySlides(); } catch(e){}
       if (document.body){
         document.body.classList.toggle('force-portrait', AD_CFG.orientation === 'portrait');
         document.body.classList.toggle('force-landscape', AD_CFG.orientation === 'landscape');
@@ -4377,6 +4486,9 @@ window.ARENA_SIGNAGE_CONFIG = {
       var incoming = (ADS.active === els.a) ? els.b : els.a;
       incoming.loop = false;
       try { incoming.muted = !(TAKEOVER.active && AD_CFG.audio); } catch(e){}
+      try {
+        if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(incoming);
+      } catch(e){}
       var incomingMediaUrl = mediaProxyUrl(ad.media_url);
       if (incoming.getAttribute('src') !== incomingMediaUrl){
         prepareMediaElementForUrl(incoming, incomingMediaUrl);

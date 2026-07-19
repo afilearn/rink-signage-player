@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.2
+# ArenaSignage Player v1.5.3
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -108,3 +108,15 @@ Supabase schema (beyond the documented command types) are untouched.
 - Proof-of-play during an outage is queued locally with real timestamps and
   flushed on reconnect (requires Worker 1.3.8, which dedupes by the original
   play minute). Plays older than ~47h are dropped rather than backdated.
+
+### 1.5.3 — facility slides + transitions
+- New per-screen content mode: Schedule (default) or Slides. In Slides mode
+  the left zone plays the facility's own image playlist (webp/jpg/png,
+  per-slide duration) full-bleed; header hidden, ticker and the ad rail
+  unchanged, admin takeovers unchanged. Never active in combined mode.
+- Slides are images only by design — one hardware video pipeline per panel
+  is reserved for the ad rail and takeovers.
+- Selectable transition (fade / slide / zoom / none, GPU-only) applied to
+  the fullscreen-only ad board and the slide zone. Set per screen.
+- Slide media is cached by the service worker for offline playback.
+  Requires Worker 1.3.9.

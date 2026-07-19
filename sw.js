@@ -18,7 +18,8 @@ self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim(
 
 function isMediaRequest(url) {
   if (url.searchParams.get('media_proxy') === '1') return true;
-  return url.pathname.indexOf('/storage/v1/object/public/ad-videos/') !== -1;
+  if (url.pathname.indexOf('/storage/v1/object/public/ad-videos/') !== -1) return true;
+  return url.pathname.indexOf('/storage/v1/object/public/facility-slides/') !== -1;
 }
 
 function isDisplayDataRequest(url) {
