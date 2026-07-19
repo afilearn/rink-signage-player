@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.3
+# ArenaSignage Player v1.5.4
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -120,3 +120,12 @@ Supabase schema (beyond the documented command types) are untouched.
   the fullscreen-only ad board and the slide zone. Set per screen.
 - Slide media is cached by the service worker for offline playback.
   Requires Worker 1.3.9.
+
+### 1.5.4 — transition + orientation fixes
+- Fade is a real animation now and transitions apply to image ads in
+  fullscreen modes (previously only videos got the class, and fade merely
+  re-timed the existing crossfade — visually a no-op).
+- Note: the per-screen Orientation setting affects split layouts only
+  (schedule + ads, slides + ads). In Fullscreen-only mode ads fill the
+  viewport regardless — rotate vertically-mounted panels at the panel level
+  (LG OSD Rotation / Android display settings).
