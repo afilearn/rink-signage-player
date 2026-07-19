@@ -1111,15 +1111,100 @@ window.ARENA_SIGNAGE_CONFIG = {
     var realtimeChannel = null;
     var currentRinkId = null;
     var healthState = null;
-    var PLAYER_VERSION = '1.5.1';
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(function(){});
+      }
+    } catch(e){}
+
+    var PLAYER_VERSION = '1.5.2';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
       lastAdName: null,
       commandBusy: false,
-      lastErrorByType: {}
+      lastErrorByType: {},
+      offlineSince: null,          // ISO while the network is down
+      lastOfflineRecovery: null    // { from, to, cached } after reconnect
     };
+    try {
+      var storedRecovery = localStorage.getItem('asg_offline_recovery');
+      if (storedRecovery) deviceState.lastOfflineRecovery = JSON.parse(storedRecovery);
+    } catch(e){}
+
+    /* ── Offline resilience v1.5 ─────────────────────────────────────────
+       The service worker keeps media (cache-first, immutable URLs) and the
+       last good schedule payload (network-first, fallback only). The player
+       tracks the outage window, reports it on reconnect, and queues
+       proof-of-play locally so ad billing keeps the outage minutes. */
+    function asgMarkOffline(){
+      if (!deviceState.offlineSince){
+        deviceState.offlineSince = new Date().toISOString();
+        try { console.log('[offline] network lost at ' + deviceState.offlineSince); } catch(e){}
+      }
+    }
+    function asgMarkOnline(){
+      if (deviceState.offlineSince){
+        deviceState.lastOfflineRecovery = {
+          from: deviceState.offlineSince,
+          to: new Date().toISOString(),
+          cached: true
+        };
+        deviceState.offlineSince = null;
+        try { localStorage.setItem('asg_offline_recovery', JSON.stringify(deviceState.lastOfflineRecovery)); } catch(e){}
+        try { sendDeviceStatus(); } catch(e){}
+      }
+      flushPlayQueue();
+    }
+
+    var PLAY_QUEUE_KEY = 'asg_play_queue';
+    var playQueueFlushing = false;
+    function readPlayQueue(){
+      try { return JSON.parse(localStorage.getItem(PLAY_QUEUE_KEY) || '[]') || []; } catch(e){ return []; }
+    }
+    function writePlayQueue(q){
+      try { localStorage.setItem(PLAY_QUEUE_KEY, JSON.stringify(q.slice(-500))); } catch(e){}
+    }
+    function queuePlay(body){
+      var q = readPlayQueue();
+      q.push(body);
+      writePlayQueue(q);
+    }
+    function flushPlayQueue(){
+      if (playQueueFlushing) return;
+      var q = readPlayQueue();
+      if (!q.length) return;
+      playQueueFlushing = true;
+      var cutoff = Date.now() - 47 * 3600000;
+      function sendNext(){
+        var q2 = readPlayQueue();
+        if (!q2.length){ playQueueFlushing = false; return; }
+        var item = q2[0];
+        var itemMs = new Date(item.played_at || 0).getTime();
+        if (!itemMs || itemMs < cutoff){ q2.shift(); writePlayQueue(q2); sendNext(); return; }
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.open('POST', apiBase() + '?id=' + encodeURIComponent(state.screenCode) + '&ad_play=1', true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.timeout = 8000;
+          xhr.onreadystatechange = function(){
+            if (xhr.readyState !== 4) return;
+            if (xhr.status >= 200 && xhr.status < 500){
+              // accepted, duplicate, or permanently rejected — either way, drop it
+              q2.shift(); writePlayQueue(q2);
+              setTimeout(sendNext, 120);
+            } else {
+              playQueueFlushing = false; // still offline / server issue — retry later
+            }
+          };
+          xhr.ontimeout = function(){ playQueueFlushing = false; };
+          xhr.send(JSON.stringify(item));
+        } catch(e){ playQueueFlushing = false; }
+      }
+      sendNext();
+    }
+    setInterval(flushPlayQueue, 120000);
 
     function markContentHealthy() {
       if (healthState && healthState.recoveryPending) {
@@ -2281,6 +2366,10 @@ window.ARENA_SIGNAGE_CONFIG = {
               if (x.status >= 200 && x.status < 300){ 
                 updateNetworkStatus('success', dt); 
                 state.retryCount = 0;
+                try {
+                  if (x.getResponseHeader('x-asg-cache') === '1') asgMarkOffline();
+                  else asgMarkOnline();
+                } catch(e){}
                 ok && ok(x.responseText); 
               } else { 
                 handleError(new Error('HTTP ' + x.status));
@@ -2300,6 +2389,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
       
       function handleError(e) {
+        try { asgMarkOffline(); } catch(err){}
         updateNetworkStatus('error');
         
         if (state.retryCount < CONFIG.RETRY_DELAYS.length) {
@@ -2519,7 +2609,9 @@ window.ARENA_SIGNAGE_CONFIG = {
         native_app_version: deviceCapabilities().native_app_version || '',
         last_content_sync_at: deviceState.lastContentSyncAt,
         last_ad_campaign_id: deviceState.lastAdCampaignId,
-        last_ad_name: deviceState.lastAdName
+        last_ad_name: deviceState.lastAdName,
+        offline_since: deviceState.offlineSince,
+        last_offline_recovery: deviceState.lastOfflineRecovery
       };
     }
 
@@ -3934,6 +4026,20 @@ window.ARENA_SIGNAGE_CONFIG = {
       return paid.length ? paid : house; // house ads fill only empty slots
     }
 
+    function asgSyncMediaCache(){
+      try {
+        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+        var urls = [];
+        for (var i = 0; i < AD_CFG.raw.length; i++){
+          var u = AD_CFG.raw[i].media_url;
+          if (!u) continue;
+          urls.push(u);
+          try { urls.push(mediaProxyUrl(u)); } catch(e){}
+        }
+        navigator.serviceWorker.controller.postMessage({ type: 'asg-media-keep', urls: urls });
+      } catch(e){}
+    }
+
     function applyAdConfig(data){
       if (data){
         AD_CFG.raw = Array.isArray(data.ads) ? data.ads : [];
@@ -3955,6 +4061,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
       if (document.body) document.body.classList.remove('fs-only');
       updateAds(poolFor('side'));
+      asgSyncMediaCache();
     }
 
     function beginTakeover(){
@@ -4108,10 +4215,17 @@ window.ARENA_SIGNAGE_CONFIG = {
         for (var i = 0; i < ADS.list.length; i++){
           if (ADS.list[i].id === campaignId){ playToken = ADS.list[i].play_token || ''; break; }
         }
+        var body = { campaign_id: campaignId, play_token: playToken, played_at: new Date().toISOString() };
+        if (deviceState.offlineSince){ queuePlay(body); return; }
         var xhr = new XMLHttpRequest();
         xhr.open('POST', apiBase() + '?id=' + encodeURIComponent(state.screenCode) + '&ad_play=1', true);
         xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.send(JSON.stringify({ campaign_id: campaignId, play_token: playToken }));
+        xhr.timeout = 8000;
+        xhr.onreadystatechange = function(){
+          if (xhr.readyState === 4 && (xhr.status === 0 || xhr.status >= 500)) queuePlay(body);
+        };
+        xhr.ontimeout = function(){ queuePlay(body); };
+        xhr.send(JSON.stringify(body));
       } catch(e){}
     }
 

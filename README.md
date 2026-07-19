@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.0
+# ArenaSignage Player v1.5.2
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -93,3 +93,18 @@ Supabase schema (beyond the documented command types) are untouched.
 - Takeovers reuse the existing playback engine — LG decoder handling,
   NativePlayer bridge, crossfade, screenshots, and proof-of-play all apply
   unchanged. Requires Worker 1.3.7.
+
+### 1.5.2 — offline resilience
+- New file `sw.js` (service worker) — upload it with the rest; `_headers` now
+  serves it no-cache so SW updates roll out immediately.
+- Ad media is cached on-device (cache-first — safe because media URLs are
+  immutable; new campaign = new URL = fresh download). Max 40 items, oldest
+  evicted, and anything no longer scheduled is pruned automatically.
+- Schedule/ads JSON stays strictly network-first: updates propagate exactly
+  as fast as before; the cached copy is served ONLY when the network is down.
+- During an outage the screen keeps playing the last-known schedule and all
+  cached ads. The player tracks the outage window and, on reconnect, reports
+  "was offline from/to, played from cache" in its device status.
+- Proof-of-play during an outage is queued locally with real timestamps and
+  flushed on reconnect (requires Worker 1.3.8, which dedupes by the original
+  play minute). Plays older than ~47h are dropped rather than backdated.
