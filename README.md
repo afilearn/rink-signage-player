@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.15
+# ArenaSignage Player v1.5.16
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -218,3 +218,10 @@ Supabase schema (beyond the documented command types) are untouched.
 - YouTube overrides also run on LG (browser engine) and take priority
   over the HDMI input while active.
 - Requires Worker v1.3.12 + database/livetv_lg_hdmi_v1_6.sql.
+
+### 1.5.16 — fix periodic black flash on LG HDMI live TV
+- webos-external video elements report soft states (stalled/waiting,
+  paused) that do not reflect the actual picture, sending the watchdog
+  into a rebuild loop that blanked the HDMI plane for ~1s every cycle.
+  The watchdog now acts only on a hard error object, and .muted is never
+  reassigned with an unchanged value.
