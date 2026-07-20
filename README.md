@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.7
+# ArenaSignage Player v1.5.8
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
