@@ -874,6 +874,10 @@ window.ARENA_SIGNAGE_CONFIG = {
     body.tv-mode #header, body.tv-mode #event-screen, body.tv-mode #empty-screen,
     body.tv-mode #tomorrow-note{ display:none !important; }
     #tv-zone video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000; }
+    #tv-yt{ display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:#000; }
+    #tv-yt iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
+    body.tv-yt #tv-yt{ display:block; }
+    body.tv-yt #tv-video{ display:none; }
     #tv-status{
       position:absolute; top:0; left:0; width:100%; height:100%;
       display:none; align-items:center; justify-content:center; text-align:center;
@@ -1139,7 +1143,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   
   <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
   <div id="slide-zone" aria-hidden="true"><img id="slide-a" alt=""><img id="slide-b" alt=""></div>
-  <div id="tv-zone" aria-hidden="true"><video id="tv-video" autoplay playsinline muted></video><div id="tv-status">Waiting for TV signal&hellip;<br><span style="font-size:1.6vmin;">Check the HDMI capture device connection</span></div></div>
+  <div id="tv-zone" aria-hidden="true"><video id="tv-video" autoplay playsinline muted></video><div id="tv-yt"></div><div id="tv-status">Waiting for TV signal&hellip;<br><span style="font-size:1.6vmin;">Check the HDMI capture device connection</span></div></div>
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
@@ -1238,7 +1242,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.13';
+    var PLAYER_VERSION = '1.5.14';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3206,15 +3210,30 @@ window.ARENA_SIGNAGE_CONFIG = {
           // draw the current frame directly. Capture streams never taint.
           try {
             if (document.body.classList.contains('tv-mode')){
-              var tvVideo = document.getElementById('tv-video');
-              if (tvVideo && tvVideo.readyState >= 2 && tvVideo.videoWidth){
-                var tvFull = document.body.classList.contains('tv-full');
-                var tx = 0, ty = 0;
-                var tw = tvFull ? finalCanvas.width : scheduleW;
-                var th = tvFull ? finalCanvas.height : scheduleH;
-                ctx.fillStyle = '#000000';
+              var tvFull = document.body.classList.contains('tv-full');
+              var tx = 0, ty = 0;
+              var tw = tvFull ? finalCanvas.width : scheduleW;
+              var th = tvFull ? finalCanvas.height : scheduleH;
+              if (document.body.classList.contains('tv-yt')){
+                // Cross-origin iframe cannot be captured — draw a card.
+                ctx.fillStyle = '#0a0a0a';
                 ctx.fillRect(tx, ty, tw, th);
-                drawCover(ctx, tvVideo, tx, ty, tw, th);
+                ctx.fillStyle = '#ed2128';
+                ctx.beginPath();
+                ctx.arc(tx + tw/2 - Math.min(tw,th)*0.12, ty + th/2, Math.min(tw,th)*0.02, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#dddddd';
+                ctx.font = 'bold ' + Math.round(Math.min(tw,th)*0.06) + 'px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('YouTube live stream', tx + tw/2 - Math.min(tw,th)*0.08, ty + th/2);
+              } else {
+                var tvVideo = document.getElementById('tv-video');
+                if (tvVideo && tvVideo.readyState >= 2 && tvVideo.videoWidth){
+                  ctx.fillStyle = '#000000';
+                  ctx.fillRect(tx, ty, tw, th);
+                  drawCover(ctx, tvVideo, tx, ty, tw, th);
+                }
               }
             }
           } catch(e){}
@@ -4141,6 +4160,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       contentMode: 'schedule',
       livetvFullscreen: false,
       livetvAudio: false,
+      ytUrl: null,
+      ytUntil: null,
       transition: 'fade',
       slides: []
     };
@@ -4344,25 +4365,147 @@ window.ARENA_SIGNAGE_CONFIG = {
       }, true);
     }
 
+    /* ── YouTube live-stream override for the TV zone ────────────────────
+       Temporary source swap: while livetv_yt_url is set (and not past
+       livetv_yt_until), the TV zone shows a YouTube embed instead of the
+       USB capture; the capture stream is released and re-acquired on
+       switch-back. Kiosk Chrome needs
+         --autoplay-policy=no-user-gesture-required
+       for the embed to start with sound available. */
+    var YTTV = { player: null, ready: false, videoId: null, apiLoading: false, expireTimer: null };
+
+    function ytVideoIdFrom(url){
+      var m = String(url || '').match(
+        /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|live\/|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/
+      );
+      return m ? m[1] : null;
+    }
+
+    function ytOverrideActive(){
+      if (!AD_CFG.ytUrl) return false;
+      if (!ytVideoIdFrom(AD_CFG.ytUrl)) return false;
+      if (AD_CFG.ytUntil){
+        var t = Date.parse(AD_CFG.ytUntil);
+        if (!isNaN(t) && t <= Date.now()) return false;
+      }
+      return true;
+    }
+
+    function ytArmExpiry(){
+      if (YTTV.expireTimer){ clearTimeout(YTTV.expireTimer); YTTV.expireTimer = null; }
+      if (!AD_CFG.ytUntil) return;
+      var t = Date.parse(AD_CFG.ytUntil);
+      if (isNaN(t)) return;
+      var wait = Math.max(1000, Math.min(2147000000, t - Date.now() + 1000));
+      YTTV.expireTimer = setTimeout(function(){
+        YTTV.expireTimer = null;
+        try { applyLiveTv(); } catch(e){}   // flips back to USB capture
+      }, wait);
+    }
+
+    function ytApplyAudio(){
+      if (!YTTV.player || !YTTV.ready) return;
+      var takeoverOn = document.body && document.body.classList.contains('fs-takeover');
+      var mute = AD_CFG.livetvAudio !== true || (takeoverOn && AD_CFG.audio === true);
+      try { if (mute) YTTV.player.mute(); else YTTV.player.unMute(); } catch(e){}
+    }
+
+    function destroyYouTubeTv(){
+      if (YTTV.expireTimer){ clearTimeout(YTTV.expireTimer); YTTV.expireTimer = null; }
+      if (YTTV.player){ try { YTTV.player.destroy(); } catch(e){} }
+      YTTV.player = null; YTTV.ready = false; YTTV.videoId = null;
+      var host = document.getElementById('tv-yt');
+      if (host){ while (host.firstChild) host.removeChild(host.firstChild); }
+      if (document.body) document.body.classList.remove('tv-yt');
+    }
+
+    function startYouTubeTv(){
+      var id = ytVideoIdFrom(AD_CFG.ytUrl);
+      if (!id) return;
+      if (YTTV.player && YTTV.videoId === id){ ytApplyAudio(); ytArmExpiry(); return; }
+      destroyYouTubeTv();
+      if (document.body) document.body.classList.add('tv-yt');
+      YTTV.videoId = id;
+      ytArmExpiry();
+      function build(){
+        var host = document.getElementById('tv-yt');
+        if (!host || !window.YT || !window.YT.Player) return;
+        var mount = document.createElement('div');
+        host.appendChild(mount);
+        YTTV.player = new window.YT.Player(mount, {
+          videoId: id,
+          playerVars: {
+            autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0,
+            iv_load_policy: 3, modestbranding: 1, rel: 0, playsinline: 1
+          },
+          events: {
+            onReady: function(ev){
+              YTTV.ready = true;
+              try { ev.target.playVideo(); } catch(e){}
+              ytApplyAudio();
+            },
+            onStateChange: function(ev){
+              // Live streams can end or hiccup — nudge playback back.
+              if (ev.data === window.YT.PlayerState.ENDED ||
+                  ev.data === window.YT.PlayerState.PAUSED){
+                try { ev.target.playVideo(); } catch(e){}
+              }
+            },
+            onError: function(ev){
+              reportPlayerError('livetv_youtube', 'YT player error ' + (ev && ev.data), { url: AD_CFG.ytUrl || '' });
+            }
+          }
+        });
+      }
+      if (window.YT && window.YT.Player){ build(); return; }
+      if (!YTTV.apiLoading){
+        YTTV.apiLoading = true;
+        var prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function(){
+          if (typeof prev === 'function'){ try { prev(); } catch(e){} }
+          // Only build if the override is still wanted by then.
+          if (document.body && document.body.classList.contains('tv-yt')) build();
+        };
+        var tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.onerror = function(){
+          YTTV.apiLoading = false;
+          reportPlayerError('livetv_youtube', 'IFrame API failed to load', {});
+        };
+        document.head.appendChild(tag);
+      }
+    }
+
     function applyLiveTv(){
+      var ytWant = AD_CFG.contentMode === 'livetv' && AD_CFG.mode !== 'always' &&
+        !(document.body && document.body.classList.contains('combined-mode')) &&
+        ytOverrideActive();
       var supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
       var want = AD_CFG.contentMode === 'livetv' &&
         AD_CFG.mode !== 'always' &&   // fullscreen-ads-only board always wins
         !(document.body && document.body.classList.contains('combined-mode'));
-      if (want && !supported){
+      if (want && !supported && !ytWant){
         // LG SI / APK without a camera HAL: schedule stays up instead.
+        // (A YouTube override can still run there — it needs no camera.)
         if (!LIVETV.reportedUnsupported){
           LIVETV.reportedUnsupported = true;
           reportPlayerError('livetv_unsupported', 'getUserMedia not available on this platform', {});
         }
         want = false;
       }
-      LIVETV.want = want;
+      LIVETV.want = want && !ytWant;
       if (document.body){
-        document.body.classList.toggle('tv-mode', want);
-        document.body.classList.toggle('tv-full', want && AD_CFG.livetvFullscreen === true);
-        if (!want) document.body.classList.remove('tv-waiting');
+        document.body.classList.toggle('tv-mode', want || ytWant);
+        document.body.classList.toggle('tv-full', (want || ytWant) && AD_CFG.livetvFullscreen === true);
+        if (!want && !ytWant) document.body.classList.remove('tv-waiting');
       }
+      if (ytWant){
+        // Release the capture device while YouTube owns the zone.
+        stopLiveTv();
+        startYouTubeTv();
+        return;
+      }
+      destroyYouTubeTv();
       if (!want){ stopLiveTv(); return; }
       tvApplyAudio();
       startLiveTv();
@@ -4430,6 +4573,8 @@ window.ARENA_SIGNAGE_CONFIG = {
           (data.content_mode === 'livetv' ? 'livetv' : 'schedule');
         AD_CFG.livetvFullscreen = data.livetv_fullscreen === true;
         AD_CFG.livetvAudio = data.livetv_audio === true;
+        AD_CFG.ytUrl = data.livetv_yt_url || null;
+        AD_CFG.ytUntil = data.livetv_yt_until || null;
         AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
         AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
       }
@@ -4496,6 +4641,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.remove('fs-leaving');
       }
       try { tvApplyAudio(); } catch(e){}
+      try { ytApplyAudio(); } catch(e){}
       ADS.list = [item];
       ADS.idx = 0;
       ADS.sig = 'takeover:' + item.id;
@@ -4518,6 +4664,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         ADS.sig = '';                             // force the side list to rebuild
         applyAdConfig(null);
         try { tvApplyAudio(); } catch(e){}
+        try { ytApplyAudio(); } catch(e){}
       }, 920);
     }
 

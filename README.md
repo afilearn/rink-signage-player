@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.13
+# ArenaSignage Player v1.5.14
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -189,3 +189,17 @@ Supabase schema (beyond the documented command types) are untouched.
 - During a fullscreen ad takeover the TV now mutes only when the ad's
   own audio is enabled (fullscreen_audio). Silent ads play over
   continuing TV sound; audible ads duck the TV and it resumes after.
+
+### 1.5.14 — YouTube live-stream override for the TV zone
+- While livetv_yt_url is set (and livetv_yt_until has not passed), the
+  TV zone shows a YouTube embed instead of the USB capture; the capture
+  stream is released and re-acquired on switch-back. Expiry flips back
+  within one second via a local timer; manual stop applies on the next
+  content poll.
+- Same audio rules as capture: muted unless TV audio is on; ducks under
+  takeovers only when the ad's own audio is enabled.
+- Kiosk Chrome needs --autoplay-policy=no-user-gesture-required for the
+  embed to start with sound.
+- Browser screenshots draw a "YouTube live stream" placeholder card —
+  cross-origin iframes cannot be captured.
+- Requires Worker v1.3.11 + database/livetv_youtube_override_v1_6.sql.
