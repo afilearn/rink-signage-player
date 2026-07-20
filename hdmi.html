@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>LG HDMI1 Inside SI App Test</title>
+
+  <style>
+    :root {
+      --left-zone-width: 68%;
+      --panel-bg: #0a1220;
+      --card-bg: rgba(255, 255, 255, 0.075);
+      --border: rgba(255, 255, 255, 0.16);
+      --text: #f8fafc;
+      --muted-text: #a9b8cc;
+      --success: #35d07f;
+      --warning: #ffbd3f;
+      --danger: #ff6677;
+      --accent: #4ca7ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #050a12;
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: var(--left-zone-width) 1fr;
+      width: 100vw;
+      height: 100vh;
+      background:
+        radial-gradient(circle at 80% 10%, rgba(76, 167, 255, 0.15), transparent 32%),
+        linear-gradient(145deg, #08101d, #03070d);
+    }
+
+    /* LEFT SIDE: this is the proposed ArenaSignage Live TV zone. */
+    .video-zone {
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      background: #000;
+      border-right: 1px solid var(--border);
+    }
+
+    #hdmiHost,
+    #hdmiVideo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hdmiVideo {
+      display: block;
+      border: 0;
+      background: #000;
+      object-fit: contain;
+    }
+
+    .zone-label {
+      position: absolute;
+      z-index: 5;
+      top: 22px;
+      left: 22px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.68);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      backdrop-filter: blur(8px);
+    }
+
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 0 5px rgba(255, 102, 119, 0.14);
+    }
+
+    .desktop-notice {
+      position: absolute;
+      z-index: 4;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 48px;
+      text-align: center;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, rgba(10, 18, 32, 0.92), rgba(2, 7, 13, 0.96));
+    }
+
+    .desktop-notice.show {
+      display: grid;
+    }
+
+    .desktop-notice-inner {
+      max-width: 660px;
+    }
+
+    .desktop-notice h2 {
+      margin: 0 0 14px;
+      font-size: clamp(28px, 3vw, 48px);
+    }
+
+    .desktop-notice p {
+      margin: 0;
+      color: var(--muted-text);
+      font-size: clamp(17px, 1.6vw, 24px);
+      line-height: 1.55;
+    }
+
+    /* RIGHT SIDE: diagnostics and test controls. */
+    .control-panel {
+      min-width: 320px;
+      overflow: auto;
+      padding: 26px;
+      background: rgba(5, 11, 20, 0.82);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 2.5vw, 42px);
+      line-height: 1.05;
+    }
+
+    .subtitle {
+      margin: 12px 0 22px;
+      color: var(--muted-text);
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .status-card,
+    .instructions,
+    .log-card {
+      margin-bottom: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card-bg);
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+    }
+
+    .status-row:last-child {
+      border-bottom: 0;
+    }
+
+    .status-label {
+      color: var(--muted-text);
+      font-size: 15px;
+    }
+
+    .status-value {
+      max-width: 220px;
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 700;
+      text-align: right;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-value.good {
+      color: var(--success);
+    }
+
+    .status-value.warn {
+      color: var(--warning);
+    }
+
+    .status-value.bad {
+      color: var(--danger);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .button {
+      min-height: 58px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.085);
+      font-weight: 800;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .button:hover,
+    .button:focus {
+      border-color: rgba(76, 167, 255, 0.9);
+      background: rgba(76, 167, 255, 0.19);
+      box-shadow: 0 0 0 4px rgba(76, 167, 255, 0.15);
+    }
+
+    .button.primary {
+      border-color: rgba(76, 167, 255, 0.64);
+      background: rgba(76, 167, 255, 0.22);
+    }
+
+    .button.full {
+      grid-column: 1 / -1;
+    }
+
+    .instructions h2,
+    .log-card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .instructions ol {
+      margin: 0;
+      padding-left: 22px;
+      color: var(--muted-text);
+      line-height: 1.55;
+    }
+
+    .instructions strong {
+      color: var(--text);
+    }
+
+    #eventLog {
+      height: 150px;
+      overflow: auto;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.38);
+      color: #d7e5f6;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .footer-note {
+      color: var(--muted-text);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 900px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: 56vh 44vh;
+      }
+
+      .video-zone {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .control-panel {
+        min-width: 0;
+        padding: 18px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <section class="video-zone" aria-label="HDMI 1 video zone">
+      <div id="hdmiHost"></div>
+
+      <div class="zone-label">
+        <span class="live-dot" aria-hidden="true"></span>
+        HDMI 1 — LEFT ZONE
+      </div>
+
+      <div id="desktopNotice" class="desktop-notice">
+        <div class="desktop-notice-inner">
+          <h2>Desktop preview only</h2>
+          <p>
+            The layout is working, but a normal computer browser cannot display
+            the LG panel’s HDMI input. Open this page inside the LG webOS Signage
+            SI app and connect the laptop to HDMI 1.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <aside class="control-panel">
+      <p class="eyebrow">ArenaSignage hardware test</p>
+      <h1>LG HDMI Test</h1>
+      <p class="subtitle">
+        This page tests whether HDMI 1 can appear inside the left side of the SI app.
+      </p>
+
+      <section class="status-card" aria-label="Test status">
+        <div class="status-row">
+          <span class="status-label">Environment</span>
+          <span id="environmentValue" class="status-value">Checking…</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Input requested</span>
+          <span class="status-value good">ext://hdmi:1</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Last video event</span>
+          <span id="eventValue" class="status-value">Starting…</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Audio request</span>
+          <span id="audioValue" class="status-value">Unmuted</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Recovery attempts</span>
+          <span id="recoveryValue" class="status-value">0</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Page time</span>
+          <span id="clockValue" class="status-value">--:--:--</span>
+        </div>
+      </section>
+
+      <div class="controls">
+        <button id="muteButton" class="button primary" type="button">
+          Mute HDMI
+        </button>
+        <button id="unmuteButton" class="button" type="button">
+          Unmute HDMI
+        </button>
+        <button id="recoverButton" class="button full" type="button">
+          Recreate HDMI Window
+        </button>
+      </div>
+
+      <section class="instructions">
+        <h2>Four checks</h2>
+        <ol>
+          <li><strong>Picture:</strong> laptop appears in the left zone.</li>
+          <li><strong>Audio:</strong> laptop sound comes from the display.</li>
+          <li><strong>Mute:</strong> “Mute HDMI” silences it.</li>
+          <li><strong>Reconnect:</strong> unplug HDMI, reconnect it, and check whether it returns.</li>
+        </ol>
+      </section>
+
+      <section class="log-card">
+        <h2>Event log</h2>
+        <div id="eventLog" aria-live="polite"></div>
+      </section>
+
+      <p class="footer-note">
+        Keyboard/remote shortcuts: 1 = mute, 2 = unmute, 3 = recreate HDMI window.
+        Standard browser media events may be limited for LG external-input video.
+      </p>
+    </aside>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var HDMI_SOURCE = "ext://hdmi:1";
+      var HDMI_TYPE = "service/webos-external";
+      var recoveryAttempts = 0;
+      var video = null;
+      var lastProblemAt = 0;
+      var autoRecoveryTimer = null;
+
+      var host = document.getElementById("hdmiHost");
+      var desktopNotice = document.getElementById("desktopNotice");
+      var environmentValue = document.getElementById("environmentValue");
+      var eventValue = document.getElementById("eventValue");
+      var audioValue = document.getElementById("audioValue");
+      var recoveryValue = document.getElementById("recoveryValue");
+      var clockValue = document.getElementById("clockValue");
+      var eventLog = document.getElementById("eventLog");
+
+      function timestamp() {
+        return new Date().toLocaleTimeString();
+      }
+
+      function log(message) {
+        var line = "[" + timestamp() + "] " + message;
+        eventLog.textContent = line + "\n" + eventLog.textContent;
+        console.log(line);
+      }
+
+      function setEventStatus(name, className) {
+        eventValue.textContent = name;
+        eventValue.className = "status-value" + (className ? " " + className : "");
+      }
+
+      function isLikelyLGWebOS() {
+        var ua = navigator.userAgent || "";
+        return /web0s|webos|netcast|lg browser/i.test(ua);
+      }
+
+      function updateEnvironment() {
+        if (isLikelyLGWebOS()) {
+          environmentValue.textContent = "LG webOS detected";
+          environmentValue.className = "status-value good";
+          desktopNotice.classList.remove("show");
+        } else {
+          environmentValue.textContent = "Desktop browser";
+          environmentValue.className = "status-value warn";
+          desktopNotice.classList.add("show");
+        }
+
+        log("User agent: " + navigator.userAgent);
+      }
+
+      function attachVideoEvents(target) {
+        var events = [
+          "loadstart",
+          "loadedmetadata",
+          "loadeddata",
+          "canplay",
+          "canplaythrough",
+          "play",
+          "playing",
+          "pause",
+          "waiting",
+          "stalled",
+          "suspend",
+          "emptied",
+          "abort",
+          "ended",
+          "error",
+          "volumechange"
+        ];
+
+        events.forEach(function (eventName) {
+          target.addEventListener(eventName, function () {
+            var className = "";
+            if (eventName === "playing" || eventName === "canplay") {
+              className = "good";
+              lastProblemAt = 0;
+            } else if (
+              eventName === "waiting" ||
+              eventName === "stalled" ||
+              eventName === "suspend"
+            ) {
+              className = "warn";
+              lastProblemAt = Date.now();
+            } else if (
+              eventName === "error" ||
+              eventName === "abort" ||
+              eventName === "ended"
+            ) {
+              className = "bad";
+              lastProblemAt = Date.now();
+            }
+
+            setEventStatus(eventName, className);
+
+            if (eventName === "volumechange") {
+              audioValue.textContent = target.muted ? "Muted" : "Unmuted";
+              audioValue.className = target.muted
+                ? "status-value warn"
+                : "status-value good";
+            }
+
+            var errorCode =
+              target.error && target.error.code
+                ? " errorCode=" + target.error.code
+                : "";
+
+            log(
+              "video event: " +
+                eventName +
+                " | paused=" +
+                target.paused +
+                " | muted=" +
+                target.muted +
+                " | readyState=" +
+                target.readyState +
+                errorCode
+            );
+          });
+        });
+      }
+
+      function attemptPlay() {
+        if (!video) return;
+
+        try {
+          var playResult = video.play();
+
+          if (playResult && typeof playResult.catch === "function") {
+            playResult.catch(function (error) {
+              setEventStatus("play() rejected", "warn");
+              log("play() rejected: " + (error && error.message ? error.message : error));
+            });
+          }
+        } catch (error) {
+          setEventStatus("play() exception", "bad");
+          log("play() exception: " + (error && error.message ? error.message : error));
+        }
+      }
+
+      function createHdmiWindow(reason) {
+        recoveryAttempts += reason === "initial load" ? 0 : 1;
+        recoveryValue.textContent = String(recoveryAttempts);
+
+        if (video) {
+          try {
+            video.pause();
+          } catch (error) {
+            log("pause before recreation was unavailable.");
+          }
+        }
+
+        host.innerHTML = "";
+
+        video = document.createElement("video");
+        video.id = "hdmiVideo";
+        video.autoplay = true;
+        video.playsInline = true;
+        video.controls = false;
+        video.muted = false;
+        video.setAttribute("autoplay", "");
+        video.setAttribute("playsinline", "");
+        video.setAttribute("aria-label", "LG HDMI 1 external input");
+
+        var source = document.createElement("source");
+        source.src = HDMI_SOURCE;
+        source.type = HDMI_TYPE;
+
+        video.appendChild(source);
+        host.appendChild(video);
+        attachVideoEvents(video);
+
+        setEventStatus("HDMI window created", "good");
+        audioValue.textContent = "Unmuted";
+        audioValue.className = "status-value good";
+        lastProblemAt = 0;
+
+        log("Created HDMI window (" + reason + "): " + HDMI_SOURCE);
+
+        try {
+          video.load();
+        } catch (error) {
+          log("video.load() exception: " + error.message);
+        }
+
+        setTimeout(attemptPlay, 250);
+        setTimeout(attemptPlay, 1500);
+      }
+
+      function setMuted(shouldMute) {
+        if (!video) return;
+
+        video.muted = shouldMute;
+        audioValue.textContent = shouldMute ? "Muted" : "Unmuted";
+        audioValue.className = shouldMute
+          ? "status-value warn"
+          : "status-value good";
+
+        log("Requested HDMI audio " + (shouldMute ? "MUTE" : "UNMUTE"));
+
+        if (!shouldMute) {
+          attemptPlay();
+        }
+      }
+
+      function startGentleRecoveryWatchdog() {
+        if (autoRecoveryTimer) {
+          clearInterval(autoRecoveryTimer);
+        }
+
+        autoRecoveryTimer = setInterval(function () {
+          if (!video) return;
+
+          /*
+            This first tries play() again without destroying the HDMI plane.
+            A full recreation happens only after a reported problem has
+            persisted for 12 seconds.
+          */
+          if (video.paused || video.ended || video.error) {
+            attemptPlay();
+          }
+
+          if (lastProblemAt && Date.now() - lastProblemAt > 12000) {
+            createHdmiWindow("automatic recovery after reported video problem");
+          }
+        }, 5000);
+      }
+
+      document.getElementById("muteButton").addEventListener("click", function () {
+        setMuted(true);
+      });
+
+      document.getElementById("unmuteButton").addEventListener("click", function () {
+        setMuted(false);
+      });
+
+      document.getElementById("recoverButton").addEventListener("click", function () {
+        createHdmiWindow("manual recovery button");
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "1" || event.keyCode === 49) {
+          setMuted(true);
+        } else if (event.key === "2" || event.keyCode === 50) {
+          setMuted(false);
+        } else if (event.key === "3" || event.keyCode === 51) {
+          createHdmiWindow("keyboard or remote shortcut");
+        }
+      });
+
+      setInterval(function () {
+        clockValue.textContent = timestamp();
+      }, 1000);
+
+      updateEnvironment();
+      createHdmiWindow("initial load");
+      startGentleRecoveryWatchdog();
+
+      log("Test ready. Connect laptop to the panel's HDMI 1 port.");
+    })();
+  </script>
+</body>
+</html>
