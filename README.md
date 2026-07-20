@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.11
+# ArenaSignage Player v1.5.12
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -180,3 +180,7 @@ Supabase schema (beyond the documented command types) are untouched.
 - Browser DOM screenshots composite the live TV frame into the correct
   zone (capture streams never taint the canvas).
 - Requires Worker v1.3.10 + database/livetv_capture_v1_6.sql.
+
+### 1.5.12 — mode conflict guard for live TV
+- "Fullscreen ads only" mode now fully disables live TV (stream stopped,
+  audio off) instead of leaving the capture running under the ad board.
