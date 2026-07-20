@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.10
+# ArenaSignage Player v1.5.11
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -162,3 +162,21 @@ Supabase schema (beyond the documented command types) are untouched.
   screenshotAdRect now returns the full canvas when fs-only or
   fs-takeover is active. LG (SCAP) and Android (PixelCopy) were already
   correct and are unchanged.
+
+### 1.5.11 — live TV left zone (USB HDMI capture, browser platforms)
+- New content mode `livetv`: the left zone shows a USB HDMI capture
+  device via getUserMedia. Prefers a video input whose label looks like
+  a capture dongle over any built-in webcam; retries every 15s on
+  failure or unplug, with a "Waiting for TV signal" card.
+- Fullscreen TV (`livetv_fullscreen`): TV owns the whole viewport, side
+  ads never run, fullscreen ads still interrupt as interval takeovers.
+  TV is auto-muted during takeovers; `livetv_audio` controls TV sound
+  otherwise.
+- Windows Chrome kiosk must launch with
+  --auto-accept-camera-and-microphone-capture so the camera permission
+  prompt never appears.
+- Platforms without a UVC camera bridge (LG SI, current Android APK)
+  report `livetv_unsupported` once and keep showing the schedule.
+- Browser DOM screenshots composite the live TV frame into the correct
+  zone (capture streams never taint the canvas).
+- Requires Worker v1.3.10 + database/livetv_capture_v1_6.sql.

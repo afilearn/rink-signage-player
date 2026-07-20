@@ -867,6 +867,33 @@ window.ARENA_SIGNAGE_CONFIG = {
       body.force-landscape.ads-active #slide-zone{ width:70vw; height:100vh; }
     }
 
+    /* ── Live TV zone (left zone in 'livetv' content mode, USB capture) ── */
+    #tv-zone{ display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; overflow:hidden; }
+    body.ads-active #tv-zone{ width:70vw; }
+    body.tv-mode #tv-zone{ display:block; }
+    body.tv-mode #header, body.tv-mode #event-screen, body.tv-mode #empty-screen,
+    body.tv-mode #tomorrow-note{ display:none !important; }
+    #tv-zone video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000; }
+    #tv-status{
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      display:none; align-items:center; justify-content:center; text-align:center;
+      color:#8a8a8a; font-size:2.4vmin; padding:0 5vw; background:#000;
+    }
+    body.tv-waiting #tv-status{ display:flex; }
+    @media (orientation: portrait){
+      body.ads-active #tv-zone{ width:100vw; height:70vh; }
+    }
+    body.force-portrait.ads-active #tv-zone{ width:100vw; height:70vh; }
+    @media (orientation: portrait){
+      body.force-landscape.ads-active #tv-zone{ width:70vw; height:100vh; }
+    }
+    /* Fullscreen TV: the TV owns the whole viewport; side ads never show,
+       the ad column appears only while a takeover is running. */
+    body.tv-full #tv-zone{ width:100vw !important; height:100vh !important; }
+    body.tv-full #ticker{ display:none !important; }
+    body.tv-full.ads-active #ad-column{ display:none; }
+    body.tv-full.ads-active.fs-takeover #ad-column{ display:block; }
+
     /* Selectable transitions (GPU-only: opacity/transform) for the
        fullscreen-only ad board and the facility slide zone. */
     @keyframes trans-slide-in { from { transform: translateX(6%); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -1112,6 +1139,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   
   <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
   <div id="slide-zone" aria-hidden="true"><img id="slide-a" alt=""><img id="slide-b" alt=""></div>
+  <div id="tv-zone" aria-hidden="true"><video id="tv-video" autoplay playsinline muted></video><div id="tv-status">Waiting for TV signal&hellip;<br><span style="font-size:1.6vmin;">Check the HDMI capture device connection</span></div></div>
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
@@ -1210,7 +1238,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.10';
+    var PLAYER_VERSION = '1.5.11';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3174,6 +3202,23 @@ window.ARENA_SIGNAGE_CONFIG = {
             0, 0, scheduleW, scheduleH
           );
 
+          // Live TV: html2canvas cannot render a getUserMedia stream, so
+          // draw the current frame directly. Capture streams never taint.
+          try {
+            if (document.body.classList.contains('tv-mode')){
+              var tvVideo = document.getElementById('tv-video');
+              if (tvVideo && tvVideo.readyState >= 2 && tvVideo.videoWidth){
+                var tvFull = document.body.classList.contains('tv-full');
+                var tx = 0, ty = 0;
+                var tw = tvFull ? finalCanvas.width : scheduleW;
+                var th = tvFull ? finalCanvas.height : scheduleH;
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(tx, ty, tw, th);
+                drawCover(ctx, tvVideo, tx, ty, tw, th);
+              }
+            }
+          } catch(e){}
+
           return compositeAdIntoScreenshot(finalCanvas);
         }).then(function(canvas){
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
@@ -4094,6 +4139,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       audio: false,
       orientation: 'auto',
       contentMode: 'schedule',
+      livetvFullscreen: false,
+      livetvAudio: false,
       transition: 'fade',
       slides: []
     };
@@ -4161,6 +4208,164 @@ window.ARENA_SIGNAGE_CONFIG = {
       SLIDES.idx = 0;
       showNextSlide();
     }
+
+    /* ── Live TV (USB HDMI capture via getUserMedia) ─────────────────────
+       Windows Chrome kiosk: launch with
+         --auto-accept-camera-and-microphone-capture
+       so the permission prompt never appears. Platforms without a UVC
+       camera bridge (LG SI, current Android APK) fail getUserMedia and
+       fall back to the schedule, reporting livetv_unsupported once. */
+    var LIVETV = {
+      want: false, stream: null, starting: false,
+      retryTimer: null, reportedUnsupported: false, reportedFail: false
+    };
+
+    function tvEls(){
+      return { video: document.getElementById('tv-video') };
+    }
+
+    function tvPickDevice(devices){
+      var cams = [];
+      for (var i = 0; i < devices.length; i++){
+        if (devices[i].kind === 'videoinput') cams.push(devices[i]);
+      }
+      if (!cams.length) return null;
+      for (var j = 0; j < cams.length; j++){
+        if (/usb|capture|hdmi|ms21|macrosilicon|cam link|video/i.test(cams[j].label || '')) return cams[j];
+      }
+      return cams[0];
+    }
+
+    function tvApplyAudio(){
+      var els = tvEls();
+      if (!els.video) return;
+      // TV is always muted while a fullscreen ad takeover is on screen so
+      // the two never talk over each other; otherwise per-screen setting.
+      var takeoverOn = document.body && document.body.classList.contains('fs-takeover');
+      els.video.muted = takeoverOn || AD_CFG.livetvAudio !== true;
+    }
+
+    function stopLiveTv(){
+      if (LIVETV.retryTimer){ clearTimeout(LIVETV.retryTimer); LIVETV.retryTimer = null; }
+      var els = tvEls();
+      if (LIVETV.stream){
+        try {
+          var tracks = LIVETV.stream.getTracks();
+          for (var i = 0; i < tracks.length; i++){ try { tracks[i].stop(); } catch(e){} }
+        } catch(e){}
+      }
+      LIVETV.stream = null;
+      LIVETV.starting = false;
+      if (els.video){ try { els.video.srcObject = null; } catch(e){} }
+      if (document.body){
+        document.body.classList.remove('tv-waiting');
+      }
+    }
+
+    function tvScheduleRetry(){
+      if (LIVETV.retryTimer) return;
+      LIVETV.retryTimer = setTimeout(function(){
+        LIVETV.retryTimer = null;
+        if (LIVETV.want) startLiveTv();
+      }, 15000);
+    }
+
+    function tvAttachStream(stream){
+      LIVETV.stream = stream;
+      LIVETV.starting = false;
+      var els = tvEls();
+      if (!els.video){ return; }
+      els.video.srcObject = stream;
+      tvApplyAudio();
+      try { els.video.play().catch(function(){}); } catch(e){}
+      if (document.body) document.body.classList.remove('tv-waiting');
+      // Dongle unplugged / signal lost → show waiting card and retry.
+      try {
+        var vt = stream.getVideoTracks()[0];
+        if (vt) vt.onended = function(){
+          if (!LIVETV.want) return;
+          stopLiveTv();
+          if (document.body && document.body.classList.contains('tv-mode')){
+            document.body.classList.add('tv-waiting');
+          }
+          tvScheduleRetry();
+        };
+      } catch(e){}
+    }
+
+    function tvAcquire(constraints, allowAudioFallback){
+      navigator.mediaDevices.getUserMedia(constraints).then(function(stream){
+        if (!LIVETV.want){
+          try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+          return;
+        }
+        // Prefer a device that looks like the capture dongle over any
+        // built-in webcam, once labels are visible post-grant.
+        navigator.mediaDevices.enumerateDevices().then(function(devices){
+          var pick = tvPickDevice(devices);
+          var current = null;
+          try { current = stream.getVideoTracks()[0].getSettings().deviceId; } catch(e){}
+          if (pick && pick.deviceId && current && pick.deviceId !== current){
+            try { stream.getTracks().forEach(function(t){ t.stop(); }); } catch(e){}
+            var exact = {
+              video: { deviceId: { exact: pick.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+              audio: constraints.audio
+            };
+            navigator.mediaDevices.getUserMedia(exact).then(tvAttachStream).catch(function(){
+              LIVETV.starting = false; tvScheduleRetry();
+            });
+            return;
+          }
+          tvAttachStream(stream);
+        }).catch(function(){ tvAttachStream(stream); });
+      }).catch(function(err){
+        if (allowAudioFallback && constraints.audio){
+          // Some dongles/sticks expose video without a working UAC audio leg.
+          tvAcquire({ video: constraints.video, audio: false }, false);
+          return;
+        }
+        LIVETV.starting = false;
+        if (!LIVETV.reportedFail){
+          LIVETV.reportedFail = true;
+          reportPlayerError('livetv_capture', 'getUserMedia failed: ' + ((err && err.name) || err), {});
+        }
+        tvScheduleRetry();
+      });
+    }
+
+    function startLiveTv(){
+      if (LIVETV.stream || LIVETV.starting || !LIVETV.want) return;
+      LIVETV.starting = true;
+      if (document.body) document.body.classList.add('tv-waiting');
+      tvAcquire({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: true
+      }, true);
+    }
+
+    function applyLiveTv(){
+      var supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+      var want = AD_CFG.contentMode === 'livetv' &&
+        !(document.body && document.body.classList.contains('combined-mode'));
+      if (want && !supported){
+        // LG SI / APK without a camera HAL: schedule stays up instead.
+        if (!LIVETV.reportedUnsupported){
+          LIVETV.reportedUnsupported = true;
+          reportPlayerError('livetv_unsupported', 'getUserMedia not available on this platform', {});
+        }
+        want = false;
+      }
+      LIVETV.want = want;
+      if (document.body){
+        document.body.classList.toggle('tv-mode', want);
+        document.body.classList.toggle('tv-full', want && AD_CFG.livetvFullscreen === true);
+        if (!want) document.body.classList.remove('tv-waiting');
+      }
+      if (!want){ stopLiveTv(); return; }
+      tvApplyAudio();
+      startLiveTv();
+    }
+
     var TAKEOVER = {
       active: false, pending: false, leaving: false,
       rotation: [], rotIdx: 0,
@@ -4219,11 +4424,15 @@ window.ARENA_SIGNAGE_CONFIG = {
         AD_CFG.intervalMin = Math.min(240, Math.max(1, Number(data.fullscreen_interval_min) || 10));
         AD_CFG.audio = data.fullscreen_audio === true;
         AD_CFG.orientation = data.orientation === 'portrait' || data.orientation === 'landscape' ? data.orientation : 'auto';
-        AD_CFG.contentMode = data.content_mode === 'slides' ? 'slides' : 'schedule';
+        AD_CFG.contentMode = data.content_mode === 'slides' ? 'slides' :
+          (data.content_mode === 'livetv' ? 'livetv' : 'schedule');
+        AD_CFG.livetvFullscreen = data.livetv_fullscreen === true;
+        AD_CFG.livetvAudio = data.livetv_audio === true;
         AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
         AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
       }
       try { applySlides(); } catch(e){}
+      try { applyLiveTv(); } catch(e){}
       if (document.body){
         document.body.classList.toggle('force-portrait', AD_CFG.orientation === 'portrait');
         document.body.classList.toggle('force-landscape', AD_CFG.orientation === 'landscape');
@@ -4257,6 +4466,12 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.remove('fs-only');
         document.body.classList.remove('fs-rotate');
       }
+      if (AD_CFG.contentMode === 'livetv' && AD_CFG.livetvFullscreen === true){
+        // Fullscreen TV: no side rotation — media stays free for takeovers.
+        updateAds([]);
+        asgSyncMediaCache();
+        return;
+      }
       updateAds(poolFor('side'));
       asgSyncMediaCache();
     }
@@ -4278,6 +4493,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.add('fs-takeover');
         document.body.classList.remove('fs-leaving');
       }
+      try { tvApplyAudio(); } catch(e){}
       ADS.list = [item];
       ADS.idx = 0;
       ADS.sig = 'takeover:' + item.id;
@@ -4299,6 +4515,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         TAKEOVER.lastEnd = Date.now();
         ADS.sig = '';                             // force the side list to rebuild
         applyAdConfig(null);
+        try { tvApplyAudio(); } catch(e){}
       }, 920);
     }
 
