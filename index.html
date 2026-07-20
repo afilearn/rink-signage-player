@@ -878,6 +878,10 @@ window.ARENA_SIGNAGE_CONFIG = {
     #tv-yt iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
     body.tv-yt #tv-yt{ display:block; }
     body.tv-yt #tv-video{ display:none; }
+    #tv-hdmi{ display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:#000; }
+    #tv-hdmi video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000; }
+    body.tv-hdmi #tv-hdmi{ display:block; }
+    body.tv-hdmi #tv-video{ display:none; }
     #tv-status{
       position:absolute; top:0; left:0; width:100%; height:100%;
       display:none; align-items:center; justify-content:center; text-align:center;
@@ -1143,7 +1147,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   
   <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
   <div id="slide-zone" aria-hidden="true"><img id="slide-a" alt=""><img id="slide-b" alt=""></div>
-  <div id="tv-zone" aria-hidden="true"><video id="tv-video" autoplay playsinline muted></video><div id="tv-yt"></div><div id="tv-status">Waiting for TV signal&hellip;<br><span style="font-size:1.6vmin;">Check the HDMI capture device connection</span></div></div>
+  <div id="tv-zone" aria-hidden="true"><video id="tv-video" autoplay playsinline muted></video><div id="tv-yt"></div><div id="tv-hdmi"></div><div id="tv-status">Waiting for TV signal&hellip;<br><span style="font-size:1.6vmin;">Check the HDMI capture device connection</span></div></div>
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
@@ -1242,7 +1246,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.14';
+    var PLAYER_VERSION = '1.5.15';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3555,6 +3559,35 @@ window.ARENA_SIGNAGE_CONFIG = {
               var dataUrl = String(data).indexOf('data:image/') === 0 ? String(data) : 'data:' + mime + ';base64,' + data;
               var probe = new Image();
               probe.onload = function(){
+                /* The HDMI hardware plane is excluded from SCAP captures
+                   (comes back black) — stamp a card over the TV region so
+                   the dashboard shows intent instead of a dead zone. */
+                if (document.body && document.body.classList.contains('tv-hdmi')){
+                  try {
+                    var c = document.createElement('canvas');
+                    c.width = probe.width; c.height = probe.height;
+                    var cx = c.getContext('2d');
+                    cx.drawImage(probe, 0, 0);
+                    var full = document.body.classList.contains('tv-full');
+                    var adsOn = document.body.classList.contains('ads-active');
+                    var portraitCap = probe.height > probe.width;
+                    var tw = full || !adsOn ? c.width : (portraitCap ? c.width : Math.round(c.width * 0.70));
+                    var th = full || !adsOn ? c.height : (portraitCap ? Math.round(c.height * 0.70) : c.height);
+                    cx.fillStyle = '#0a0a0a';
+                    cx.fillRect(0, 0, tw, th);
+                    cx.fillStyle = '#ed2128';
+                    cx.beginPath();
+                    cx.arc(tw/2 - Math.min(tw,th)*0.12, th/2, Math.min(tw,th)*0.02, 0, Math.PI*2);
+                    cx.fill();
+                    cx.fillStyle = '#dddddd';
+                    cx.font = 'bold ' + Math.round(Math.min(tw,th)*0.06) + 'px sans-serif';
+                    cx.textAlign = 'left';
+                    cx.textBaseline = 'middle';
+                    cx.fillText('HDMI ' + (LGTV.input || 1) + ' live', tw/2 - Math.min(tw,th)*0.08, th/2);
+                    var stamped = c.toDataURL('image/jpeg', 0.72);
+                    return resolve({ dataUrl: stamped, type: 'native', native_method: 'scap_capture_screen', width: probe.width, height: probe.height });
+                  } catch(stampError){ /* fall through with the raw capture */ }
+                }
                 resolve({ dataUrl: dataUrl, type: 'native', native_method: 'scap_capture_screen', width: probe.width, height: probe.height });
               };
               probe.onerror = function(){
@@ -4162,6 +4195,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       livetvAudio: false,
       ytUrl: null,
       ytUntil: null,
+      hdmiInput: 1,
       transition: 'fade',
       slides: []
     };
@@ -4476,16 +4510,107 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     }
 
+    /* ── LG webOS external HDMI input for the TV zone ────────────────────
+       On lg_si the TV zone plays the panel's own HDMI port through the
+       webOS external-input video tag (<source src="ext://hdmi:N"
+       type="service/webos-external">) — verified on the 49UM5N inside the
+       SI app. No capture dongle involved. Gentle watchdog: retry play()
+       first, recreate the element only after a problem persists 12s
+       (recreating tears down the hardware video plane). SCAP screenshots
+       cannot capture the HDMI plane — a placeholder is stamped instead. */
+    var LGTV = { video: null, input: 0, lastProblemAt: 0, watchdog: null };
+
+    function lgHdmiApplyAudio(){
+      if (!LGTV.video) return;
+      var takeoverOn = document.body && document.body.classList.contains('fs-takeover');
+      LGTV.video.muted = AD_CFG.livetvAudio !== true || (takeoverOn && AD_CFG.audio === true);
+    }
+
+    function stopLgHdmiTv(){
+      if (LGTV.watchdog){ clearInterval(LGTV.watchdog); LGTV.watchdog = null; }
+      if (LGTV.video){ try { LGTV.video.pause(); } catch(e){} }
+      LGTV.video = null; LGTV.input = 0; LGTV.lastProblemAt = 0;
+      var host = document.getElementById('tv-hdmi');
+      if (host){ while (host.firstChild) host.removeChild(host.firstChild); }
+      if (document.body) document.body.classList.remove('tv-hdmi');
+    }
+
+    function lgHdmiBuild(input){
+      var host = document.getElementById('tv-hdmi');
+      if (!host) return;
+      if (LGTV.video){ try { LGTV.video.pause(); } catch(e){} }
+      while (host.firstChild) host.removeChild(host.firstChild);
+      var v = document.createElement('video');
+      v.autoplay = true;
+      v.setAttribute('autoplay', '');
+      v.setAttribute('playsinline', '');
+      v.controls = false;
+      var src = document.createElement('source');
+      src.src = 'ext://hdmi:' + input;
+      src.type = 'service/webos-external';
+      v.appendChild(src);
+      host.appendChild(v);
+      LGTV.video = v;
+      LGTV.input = input;
+      LGTV.lastProblemAt = 0;
+      lgHdmiApplyAudio();
+      var onProblem = function(){ LGTV.lastProblemAt = Date.now(); };
+      var onGood = function(){ LGTV.lastProblemAt = 0; };
+      ['error','abort','ended','stalled','waiting'].forEach(function(name){
+        v.addEventListener(name, onProblem);
+      });
+      ['playing','canplay'].forEach(function(name){
+        v.addEventListener(name, onGood);
+      });
+      try { v.load(); } catch(e){}
+      var tryPlay = function(){
+        if (LGTV.video !== v) return;
+        try {
+          var r = v.play();
+          if (r && typeof r.catch === 'function') r.catch(function(){});
+        } catch(e){}
+      };
+      setTimeout(tryPlay, 250);
+      setTimeout(tryPlay, 1500);
+    }
+
+    function startLgHdmiTv(){
+      var input = Math.min(4, Math.max(1, Number(AD_CFG.hdmiInput) || 1));
+      if (document.body) document.body.classList.add('tv-hdmi');
+      if (LGTV.video && LGTV.input === input){ lgHdmiApplyAudio(); return; }
+      lgHdmiBuild(input);
+      if (!LGTV.watchdog){
+        LGTV.watchdog = setInterval(function(){
+          if (!LGTV.video) return;
+          if (LGTV.video.paused || LGTV.video.ended || LGTV.video.error){
+            try {
+              var r = LGTV.video.play();
+              if (r && typeof r.catch === 'function') r.catch(function(){});
+            } catch(e){}
+          }
+          // Full recreation only after a persistent problem (cable pulled).
+          if (LGTV.lastProblemAt && Date.now() - LGTV.lastProblemAt > 12000){
+            lgHdmiBuild(LGTV.input);
+          }
+        }, 5000);
+      }
+    }
+
+    function isLgSiPlatform(){
+      try { return platformDetails().platform === 'lg_si'; } catch(e){ return false; }
+    }
+
     function applyLiveTv(){
       var ytWant = AD_CFG.contentMode === 'livetv' && AD_CFG.mode !== 'always' &&
         !(document.body && document.body.classList.contains('combined-mode')) &&
         ytOverrideActive();
-      var supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+      var lgWant = isLgSiPlatform();
+      var supported = lgWant || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
       var want = AD_CFG.contentMode === 'livetv' &&
         AD_CFG.mode !== 'always' &&   // fullscreen-ads-only board always wins
         !(document.body && document.body.classList.contains('combined-mode'));
       if (want && !supported && !ytWant){
-        // LG SI / APK without a camera HAL: schedule stays up instead.
+        // APK without a camera HAL: schedule stays up instead.
         // (A YouTube override can still run there — it needs no camera.)
         if (!LIVETV.reportedUnsupported){
           LIVETV.reportedUnsupported = true;
@@ -4500,13 +4625,21 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (!want && !ytWant) document.body.classList.remove('tv-waiting');
       }
       if (ytWant){
-        // Release the capture device while YouTube owns the zone.
+        // Release the capture device / HDMI plane while YouTube owns the zone.
         stopLiveTv();
+        stopLgHdmiTv();
         startYouTubeTv();
         return;
       }
       destroyYouTubeTv();
-      if (!want){ stopLiveTv(); return; }
+      if (!want){ stopLiveTv(); stopLgHdmiTv(); return; }
+      if (lgWant){
+        // LG panels: the panel's own HDMI input, no dongle.
+        stopLiveTv();
+        startLgHdmiTv();
+        return;
+      }
+      stopLgHdmiTv();
       tvApplyAudio();
       startLiveTv();
     }
@@ -4575,6 +4708,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         AD_CFG.livetvAudio = data.livetv_audio === true;
         AD_CFG.ytUrl = data.livetv_yt_url || null;
         AD_CFG.ytUntil = data.livetv_yt_until || null;
+        AD_CFG.hdmiInput = Math.min(4, Math.max(1, Number(data.livetv_hdmi_input) || 1));
         AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
         AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
       }
@@ -4642,6 +4776,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
       try { tvApplyAudio(); } catch(e){}
       try { ytApplyAudio(); } catch(e){}
+      try { lgHdmiApplyAudio(); } catch(e){}
       ADS.list = [item];
       ADS.idx = 0;
       ADS.sig = 'takeover:' + item.id;
@@ -4665,6 +4800,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         applyAdConfig(null);
         try { tvApplyAudio(); } catch(e){}
         try { ytApplyAudio(); } catch(e){}
+        try { lgHdmiApplyAudio(); } catch(e){}
       }, 920);
     }
 

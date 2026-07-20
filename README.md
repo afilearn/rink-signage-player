@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.14
+# ArenaSignage Player v1.5.15
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -203,3 +203,18 @@ Supabase schema (beyond the documented command types) are untouched.
 - Browser screenshots draw a "YouTube live stream" placeholder card —
   cross-origin iframes cannot be captured.
 - Requires Worker v1.3.11 + database/livetv_youtube_override_v1_6.sql.
+
+### 1.5.15 — live TV on LG panels via external HDMI input
+- On lg_si the live TV zone plays the panel's own HDMI port through the
+  webOS external-input video tag (ext://hdmi:N, service/webos-external) —
+  no capture dongle. Per-screen livetv_hdmi_input selects HDMI 1-4.
+- Gentle watchdog retries play() every 5s and recreates the element only
+  after a problem persists 12s (cable pulled), matching the verified
+  on-panel test behavior.
+- Same audio rules: muted unless TV audio is on; ducks under takeovers
+  only when the ad's own audio is enabled.
+- SCAP captures exclude the HDMI hardware plane, so screenshots stamp an
+  "HDMI N live" card over the TV region instead of showing black.
+- YouTube overrides also run on LG (browser engine) and take priority
+  over the HDMI input while active.
+- Requires Worker v1.3.12 + database/livetv_lg_hdmi_v1_6.sql.
