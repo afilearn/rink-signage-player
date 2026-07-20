@@ -35,7 +35,7 @@ function isDisplayDataRequest(url) {
 function isShellRequest(url) {
   if (url.origin !== self.location.origin) return false;
   var p = url.pathname;
-  return p === '/' || p === '/index.html' || /\/lg-[a-z.]+\.js$/.test(p) || p === '/logo.png';
+  return p === '/' || p === '/index.html' || /\/lg-[a-z.]+\.js$/.test(p) || p === '/logo.png' || p === '/branding.gif' || p === '/branding.webp';
 }
 
 function markCached(response) {

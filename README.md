@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.6
+# ArenaSignage Player v1.5.7
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -140,3 +140,10 @@ Supabase schema (beyond the documented command types) are untouched.
 - With Android APK 1.5.2+, rotated fullscreen-only screens play webm too:
   the player calls NativePlayer.setRotation(90) and the app renders video
   through a rotatable TextureView. Older APKs keep the image-only filter.
+
+### 1.5.7 — branded loading screen
+- Animated branding while the first payload loads: drop `branding.gif` or
+  `branding.webp` into the repo root (checked in that order; falls back to
+  logo.png with a gentle pulse if neither exists). Cached by the service
+  worker so it also shows on offline boots. Hides on first render, on the
+  pairing screen, and after a 25s failsafe — it can never stick.

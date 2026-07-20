@@ -165,6 +165,20 @@ window.ARENA_SIGNAGE_CONFIG = {
       transition: opacity 0.4s ease;
     }
 
+    /* Boot splash: animated branding while the first payload loads.
+       Drop a file named branding.gif (or branding.webp) into the repo root
+       to use it; otherwise the logo shows with a gentle pulse. */
+    #boot-splash{
+      position:fixed; inset:0; z-index:99999; background:#000;
+      display:flex; align-items:center; justify-content:center;
+      opacity:1; transition:opacity 0.6s ease;
+    }
+    #boot-splash.gone{ opacity:0; pointer-events:none; }
+    #boot-splash img{ max-width:46vw; max-height:40vh; object-fit:contain; }
+    #boot-splash img.fallback-pulse{ animation: splash-pulse 2.2s ease-in-out infinite; }
+    @keyframes splash-pulse { 0%,100%{ opacity:0.55; } 50%{ opacity:1; } }
+    @media (prefers-reduced-motion: reduce){ #boot-splash img.fallback-pulse{ animation:none; } }
+
     #code-screen {
       opacity: 1;
       transition: opacity 0.4s ease;
@@ -1096,6 +1110,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   <div id="ticker"><div id="ticker-track"></div></div>
 
   
+  <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
   <div id="slide-zone" aria-hidden="true"><img id="slide-a" alt=""><img id="slide-b" alt=""></div>
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
@@ -1160,7 +1175,31 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     } catch(e){}
 
-    var PLAYER_VERSION = '1.5.6';
+    (function bootSplash(){
+      var img = document.getElementById('boot-splash-img');
+      if (!img) return;
+      var candidates = ['branding.gif', 'branding.webp', 'logo.png'];
+      var i = 0;
+      function tryNext(){
+        if (i >= candidates.length){ hideBootSplash(); return; }
+        var src2 = candidates[i]; i += 1;
+        img.onerror = tryNext;
+        img.onload = function(){ if (src2 === 'logo.png') img.classList.add('fallback-pulse'); };
+        img.src = src2;
+      }
+      tryNext();
+      /* Failsafe: never sit on the splash longer than 25s no matter what. */
+      setTimeout(hideBootSplash, 25000);
+    })();
+
+    function hideBootSplash(){
+      var el = document.getElementById('boot-splash');
+      if (!el || el.classList.contains('gone')) return;
+      el.classList.add('gone');
+      setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
+    }
+
+    var PLAYER_VERSION = '1.5.7';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2142,6 +2181,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       requestAnimationFrame(function() {
         requestAnimationFrame(function() {
           el.classList.add('visible');
+          try { hideBootSplash(); } catch(e){}
         });
       });
     }
@@ -4960,6 +5000,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
     
     function maybeRender(data){
+      hideBootSplash();
       var sig = signatureFromData(data);
 
       state.lastPayload = data;
