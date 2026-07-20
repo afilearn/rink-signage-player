@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.9
+# ArenaSignage Player v1.5.10
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -155,3 +155,10 @@ Supabase schema (beyond the documented command types) are untouched.
 - Per-ad transitions in fullscreen modes (fade/slide/zoom) slowed from
   0.6–0.7s to 1.2–1.4s with softer easing. All animations remain
   GPU-only (opacity/transform) for LG panel smoothness.
+
+### 1.5.10 — browser fullscreen screenshot fix
+- Desktop Chrome DOM screenshots assumed the 70/30 schedule/ad split even
+  in fullscreen ad modes, compositing the ad as a narrow side column.
+  screenshotAdRect now returns the full canvas when fs-only or
+  fs-takeover is active. LG (SCAP) and Android (PixelCopy) were already
+  correct and are unchanged.
