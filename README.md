@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.8
+# ArenaSignage Player v1.5.9
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -147,3 +147,11 @@ Supabase schema (beyond the documented command types) are untouched.
   logo.png with a gentle pulse if neither exists). Cached by the service
   worker so it also shows on offline boots. Hides on first render, on the
   pairing screen, and after a 25s failsafe — it can never stick.
+
+### 1.5.9 — softer fullscreen ad animations
+- Fullscreen takeover slide in/out slowed from 0.45s to 0.9s with a
+  gentler ease; JS exit timeout matched so the schedule never snaps
+  back mid-animation.
+- Per-ad transitions in fullscreen modes (fade/slide/zoom) slowed from
+  0.6–0.7s to 1.2–1.4s with softer easing. All animations remain
+  GPU-only (opacity/transform) for LG panel smoothness.

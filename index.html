@@ -872,9 +872,9 @@ window.ARENA_SIGNAGE_CONFIG = {
     @keyframes trans-slide-in { from { transform: translateX(6%); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes trans-zoom-in { from { transform: scale(1.08); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes trans-fade-in { from { opacity: 0; } to { opacity: 1; } }
-    .trans-fade{ animation: trans-fade-in 0.7s ease; }
-    .trans-slide{ animation: trans-slide-in 0.6s cubic-bezier(0.32,0.72,0,1); }
-    .trans-zoom{ animation: trans-zoom-in 0.7s cubic-bezier(0.32,0.72,0,1); }
+    .trans-fade{ animation: trans-fade-in 1.4s ease-in-out; }
+    .trans-slide{ animation: trans-slide-in 1.2s cubic-bezier(0.25,0.1,0.25,1); }
+    .trans-zoom{ animation: trans-zoom-in 1.4s cubic-bezier(0.25,0.1,0.25,1); }
     .trans-none{ transition:none !important; animation:none !important; }
     @media (prefers-reduced-motion: reduce){
       .trans-fade, .trans-slide, .trans-zoom{ animation:none; }
@@ -894,8 +894,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       width:100vw !important; height:100vh !important; max-width:100vw !important;
       border:none !important;
     }
-    body.fs-takeover #ad-column{ animation: fs-slide-in 0.45s cubic-bezier(0.32,0.72,0,1); }
-    body.fs-takeover.fs-leaving #ad-column{ animation: fs-slide-out 0.45s cubic-bezier(0.32,0.72,0,1) forwards; }
+    body.fs-takeover #ad-column{ animation: fs-slide-in 0.9s cubic-bezier(0.25,0.1,0.25,1); }
+    body.fs-takeover.fs-leaving #ad-column{ animation: fs-slide-out 0.9s cubic-bezier(0.25,0.1,0.25,1) forwards; }
     /* Admin-set portrait for fullscreen-only: rotate the ad output 90°
        in CSS so vertically-mounted panels need no hardware rotation.
        (Android native video cannot be CSS-rotated — the player serves
@@ -1210,7 +1210,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.8';
+    var PLAYER_VERSION = '1.5.9';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4294,7 +4294,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         TAKEOVER.lastEnd = Date.now();
         ADS.sig = '';                             // force the side list to rebuild
         applyAdConfig(null);
-      }, 470);
+      }, 920);
     }
 
     // Takeover scheduler + eligibility refresh (dayparts change over the day)
