@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.18
+# ArenaSignage Player v1.5.19
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -243,3 +243,9 @@ Supabase schema (beyond the documented command types) are untouched.
   is off — every other path keeps hardware-plane playback. Combined with
   the 1.5.17 plane release, this is the documented fix for the white
   strip artifact.
+
+### 1.5.19 — revert texture-mode ads
+- The `texture` attribute destabilized the UM5N media pipeline (HDMI TV
+  plane blanked for ~1 minute at a time). Reverted; behavior is now
+  identical to 1.5.17 (plane release on swap + explicit positioning),
+  which is the state to evaluate against the white-strip artifact.

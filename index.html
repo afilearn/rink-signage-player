@@ -1246,7 +1246,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.18';
+    var PLAYER_VERSION = '1.5.19';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4607,26 +4607,13 @@ window.ARENA_SIGNAGE_CONFIG = {
       try { return platformDetails().platform === 'lg_si'; } catch(e){ return false; }
     }
 
-    /* While the HDMI hardware plane is live, webm ads must not claim their
-       own planes or the compositor mis-places one (white strip in the TV
-       zone). webOS Signage 4.1+ supports the `texture` property on <video>:
-       the video renders in the GPU-composited layer, obeys CSS stacking,
-       and cannot collide with the HDMI plane. Applied only on lg_si while
-       tv-hdmi is active; removed otherwise so all other paths keep
-       hardware-plane playback. The attribute is read at media load, and
-       every swap re-loads src, so toggling here takes effect per-ad. */
+    /* v1.5.18's webOS `texture` experiment destabilized the media
+       pipeline on UM5N firmware (TV plane blanked for ~1 min). Reverted:
+       this now only ever REMOVES the attribute so no element carries it. */
     function updateAdTextureMode(){
       var els = adEls();
-      var wantTexture = isLgSiPlatform() &&
-        document.body && document.body.classList.contains('tv-hdmi');
       [els.a, els.b].forEach(function(v){
-        if (!v) return;
-        var has = v.hasAttribute('texture');
-        if (wantTexture && !has){
-          v.setAttribute('texture', '');
-        } else if (!wantTexture && has){
-          v.removeAttribute('texture');
-        }
+        if (v && v.hasAttribute('texture')) v.removeAttribute('texture');
       });
     }
 
