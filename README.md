@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.17
+# ArenaSignage Player v1.5.18
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -234,3 +234,12 @@ Supabase schema (beyond the documented command types) are untouched.
   outgoing ad now fully releases its media (src removed + load()) after
   each swap. Also replaced unsupported `inset:0` with explicit top/left
   on the ad-column video elements and ad image.
+
+### 1.5.18 — texture-mode ads while LG HDMI TV is live
+- While tv-hdmi is active on lg_si, the side-ad <video> elements get the
+  webOS `texture` attribute (Signage 4.1+): they render in the GPU
+  compositor instead of claiming hardware video planes, so they can
+  never collide with the HDMI plane. Removed automatically when live TV
+  is off — every other path keeps hardware-plane playback. Combined with
+  the 1.5.17 plane release, this is the documented fix for the white
+  strip artifact.
