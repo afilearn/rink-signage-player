@@ -823,7 +823,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
     #ad-column{ position:relative; background:#000; }
-    #ad-column video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; opacity:0; transition:opacity 0.25s ease; }
+    #ad-column video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; background:#000; opacity:0; transition:opacity 0.25s ease; }
     #ad-column video.showing{ opacity:1; }
     body.ads-active #header,
     body.ads-active #event-screen,
@@ -1151,7 +1151,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   <div id="ad-column">
     <video id="ad-video-a" muted playsinline webkit-playsinline preload="auto"></video>
     <video id="ad-video-b" muted playsinline webkit-playsinline preload="auto"></video>
-    <img id="ad-image" alt="" decoding="async" style="display:none;width:100%;height:100%;object-fit:cover;background:#000;position:absolute;inset:0;z-index:2;" />
+    <img id="ad-image" alt="" decoding="async" style="display:none;width:100%;height:100%;object-fit:cover;background:#000;position:absolute;top:0;left:0;z-index:2;" />
   </div>
 <script>
   (function(){
@@ -1246,7 +1246,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.16';
+    var PLAYER_VERSION = '1.5.17';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -5156,7 +5156,17 @@ window.ARENA_SIGNAGE_CONFIG = {
           if (ADS.active && ADS.active !== v){
             var old = ADS.active;
             old.classList.remove('showing');
-            setTimeout(function(){ try { old.pause(); } catch(e){} }, 300);
+            setTimeout(function(){
+              try { old.pause(); } catch(e){}
+              /* LG + HDMI live TV: a paused webm still holds a hardware
+                 video plane. HDMI + active ad + paused ad = 3 planes,
+                 which overflows the compositor and the spare plane bleeds
+                 into the TV zone (white strip). Fully release it; the
+                 swap path re-sets src + load() on reuse. */
+              if (isLgSiPlatform() && document.body && document.body.classList.contains('tv-hdmi')){
+                try { old.removeAttribute('src'); old.load(); } catch(e){}
+              }
+            }, 300);
           }
           ADS.active = v;
           ADS.swapping = false;

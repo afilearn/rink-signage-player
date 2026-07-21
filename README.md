@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.16
+# ArenaSignage Player v1.5.17
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -225,3 +225,12 @@ Supabase schema (beyond the documented command types) are untouched.
   into a rebuild loop that blanked the HDMI plane for ~1s every cycle.
   The watchdog now acts only on a hard error object, and .muted is never
   reassigned with an unchanged value.
+
+### 1.5.17 — fix white-strip plane bleed next to LG HDMI live TV
+- With HDMI live TV active, a paused side-ad webm still held a hardware
+  video plane; HDMI + active ad + paused ad = 3 planes, overflowing the
+  49UM5N compositor so the spare plane bled a strip into the TV zone
+  (visible on light-background ads). On lg_si with HDMI TV active, the
+  outgoing ad now fully releases its media (src removed + load()) after
+  each swap. Also replaced unsupported `inset:0` with explicit top/left
+  on the ad-column video elements and ad image.
