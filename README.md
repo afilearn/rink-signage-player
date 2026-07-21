@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.20
+# ArenaSignage Player v1.5.22
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -260,3 +260,10 @@ Supabase schema (beyond the documented command types) are untouched.
   1.5.16 alongside the rebuild loop, but the nudge itself was harmless)
   and added pipeline-event-driven play() starts — cuts the 15s+ TV
   attach delay after a reload.
+
+### 1.5.22 — image takeovers never duck live TV audio
+- Based on 1.5.20 (the 1.5.21 instant-boot experiment is not included).
+- TV ducking during a fullscreen takeover now requires the active
+  takeover item to be a VIDEO with fullscreen audio enabled. Static
+  image takeovers (webp/jpg/png) make no sound and no longer mute the
+  live TV. Applies to USB capture, LG HDMI, and YouTube sources alike.
