@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.23
+# ArenaSignage Player v1.5.24
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -281,3 +281,14 @@ Supabase schema (beyond the documented command types) are untouched.
 - Android note: native webm playback renders above the WebView, so a
   fading image + appearing native video is a fade-out/cut; a true
   native fade-in needs a future APK bridge addition.
+
+### 1.5.24 — LG strict one-decoder fade sequencing (fixes SI crash loop)
+- 1.5.23's fade kept the outgoing webm decoding while the incoming webm
+  also decoded — two ad pipelines beside the HDMI plane crashed the
+  webOS 6.0 media stack and the OS relaunched the SI app in a loop.
+- On lg_si, ad transitions now sequence strictly: fade out, pause, fully
+  release the old ad's media, THEN load and fade in the next. Hidden-
+  buffer preloads are disabled on LG entirely (an idle loaded webm
+  pipeline destabilizes webOS beside the HDMI plane). A brief black beat
+  in the ad column between fades is covered by the fade-in.
+- Windows Chrome and Android WebView keep the 1.5.23 overlapped fade.

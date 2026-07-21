@@ -1254,7 +1254,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.23';
+    var PLAYER_VERSION = '1.5.24';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -5096,8 +5096,9 @@ window.ARENA_SIGNAGE_CONFIG = {
             } catch(e){}
             var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
             ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
-            // Preload the next video ad behind the image so it starts instantly
-            preloadNextInto(ADS.active === els.a ? els.b : els.a);
+            // Preload the next video ad behind the image so it starts
+            // instantly — except on LG (strict one-decoder rule).
+            if (!isLgSiPlatform()) preloadNextInto(ADS.active === els.a ? els.b : els.a);
           };
           els.img.onerror = function(){ els.img.onload = null; els.img.onerror = null; nextAd(); };
           els.img.onload = reveal;
@@ -5164,31 +5165,52 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(incoming);
       } catch(e){}
       var incomingMediaUrl = mediaProxyUrl(ad.media_url);
-      if (incoming.getAttribute('src') !== incomingMediaUrl){
-        prepareMediaElementForUrl(incoming, incomingMediaUrl);
-        incoming.setAttribute('src', incomingMediaUrl);
-        try { incoming.load(); } catch(e){}
-      } else if (incoming.ended || incoming.readyState === 0){
-        // Replaying a finished element without load() renders black on many TV engines
-        try { incoming.load(); } catch(e){}
-      } else {
-        try { incoming.currentTime = 0; } catch(e){}
-      }
+      var beginIncomingLoad = function(){
+        if (incoming.getAttribute('src') !== incomingMediaUrl){
+          prepareMediaElementForUrl(incoming, incomingMediaUrl);
+          incoming.setAttribute('src', incomingMediaUrl);
+          try { incoming.load(); } catch(e){}
+        } else if (incoming.ended || incoming.readyState === 0){
+          // Replaying a finished element without load() renders black on many TV engines
+          try { incoming.load(); } catch(e){}
+        } else {
+          try { incoming.currentTime = 0; } catch(e){}
+        }
+        // webOS: play() before sufficient buffering shows a frame, stalls, and
+        // restarts decode (visible "replay"). Start only when ready; the element
+        // is hidden until 'playing' fires, so waiting costs nothing visually.
+        startWhenReady(incoming);
+        // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
+        if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
+        ADS.swapTimer = setTimeout(function(){
+          if (!ADS.swapping) return;
+          if (!ADS.rescued){
+            ADS.rescued = true;
+            try { incoming.load(); startWhenReady(incoming); } catch(e){}
+            ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
+          } else { ADS.rescued = false; nextAd(); }
+        }, 5000);
+      };
       ADS.swapping = true;
-      // webOS: play() before sufficient buffering shows a frame, stalls, and
-      // restarts decode (visible "replay"). Start only when ready; the element
-      // is hidden until 'playing' fires, so waiting costs nothing visually.
-      startWhenReady(incoming);
-      // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
-      if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
-      ADS.swapTimer = setTimeout(function(){
-        if (!ADS.swapping) return;
-        if (!ADS.rescued){
-          ADS.rescued = true;
-          try { incoming.load(); startWhenReady(incoming); } catch(e){}
-          ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
-        } else { ADS.rescued = false; nextAd(); }
-      }, 5000);
+      if (isLgSiPlatform()){
+        /* webOS handles ONE ad decoder reliably (same doctrine as the
+           takeover's release-first rule). Two concurrent webm pipelines
+           beside the HDMI plane crash the media stack, and webOS then
+           relaunches the whole SI app (the reload loop). Sequence
+           strictly: fade out + pause + fully release the old ad, THEN
+           load the incoming one. The brief black beat in the column is
+           covered by the fade-in. */
+        var oldToRelease = (ADS.active && ADS.active !== incoming) ? ADS.active : null;
+        fadeOutCurrentAdVisual(function(){
+          if (oldToRelease){
+            try { oldToRelease.pause(); oldToRelease.removeAttribute('src'); oldToRelease.load(); } catch(e){}
+            oldToRelease.classList.remove('showing');
+          }
+          beginIncomingLoad();
+        }, oldToRelease);
+      } else {
+        beginIncomingLoad();
+      }
       // reveal + hide-old happens in the 'playing' listener below
     }
 
@@ -5232,7 +5254,7 @@ window.ARENA_SIGNAGE_CONFIG = {
           ADS.rescued = false;
           if (ADS.swapTimer){ clearTimeout(ADS.swapTimer); ADS.swapTimer = null; }
           if (v === ADS.active && v.classList.contains('showing')) return;
-          var oldV = (ADS.active && ADS.active !== v && ADS.active.classList.contains('showing')) ? ADS.active : null;
+          var oldV = (!isLgSiPlatform() && ADS.active && ADS.active !== v && ADS.active.classList.contains('showing')) ? ADS.active : null;
           ADS.active = v;
           // Sequential fade: old ad (video or image) fades to black first,
           // then this element fades in. The incoming video decodes hidden
@@ -5243,9 +5265,10 @@ window.ARENA_SIGNAGE_CONFIG = {
           }, oldV);
           // Preload only when there is a genuinely different next item.
           // Single-ad playback must keep the second LG decoder released.
-          // (On LG+HDMI the fade-end plane release wipes this preload by
-          // design — same trade-off as 1.5.17-1.5.22.)
-          if (ADS.list.length > 1) preloadNextInto(other);
+          // On LG, never preload: strict one-decoder sequencing releases
+          // it anyway, and a loaded-but-idle webm pipeline is exactly
+          // what destabilizes webOS 6.0 beside the HDMI plane.
+          if (ADS.list.length > 1 && !isLgSiPlatform()) preloadNextInto(other);
         });
 
         v.addEventListener('ended', function(){
