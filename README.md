@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.22
+# ArenaSignage Player v1.5.23
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -267,3 +267,17 @@ Supabase schema (beyond the documented command types) are untouched.
   takeover item to be a VIDEO with fullscreen audio enabled. Static
   image takeovers (webp/jpg/png) make no sound and no longer mute the
   live TV. Applies to USB capture, LG HDMI, and YouTube sources alike.
+
+### 1.5.23 — sequential fade between side ads
+- Every side-ad transition now fades: the outgoing ad (webm or webp)
+  fades to black over 0.4s, then the incoming one fades in over 0.4s —
+  all four combos covered. Image ads use the same opacity/class
+  mechanics as videos (previously display:none hard cuts).
+- Opacity-only transitions (GPU-composited) for smoothness on LG SI,
+  Windows Chrome kiosk, and the Android WebView.
+- The outgoing webm keeps playing through its fade-out; pause — and the
+  LG+HDMI hardware-plane release from 1.5.17 — happen only after the
+  fade completes, so LG panels fade instead of flashing.
+- Android note: native webm playback renders above the WebView, so a
+  fading image + appearing native video is a fade-out/cut; a true
+  native fade-in needs a future APK bridge addition.
