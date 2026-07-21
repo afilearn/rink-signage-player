@@ -823,11 +823,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       border-left:2px solid rgba(255,255,255,0.08); z-index:20000;
     }
     #ad-column{ position:relative; background:#000; }
-    #ad-column video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; background:#000; opacity:0; transition:opacity 0.4s ease; }
+    #ad-column video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; background:#000; opacity:0; transition:opacity 0.25s ease; }
     #ad-column video.showing{ opacity:1; }
-    /* Image ads fade like the videos: opacity-only (GPU) for LG/Android */
-    #ad-image{ opacity:0; transition:opacity 0.4s ease; }
-    #ad-image.showing{ opacity:1; }
     body.ads-active #header,
     body.ads-active #event-screen,
     body.ads-active #empty-screen,
@@ -1254,7 +1251,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.27';
+    var PLAYER_VERSION = '1.5.22';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4659,12 +4656,6 @@ window.ARENA_SIGNAGE_CONFIG = {
         // Release the capture device / HDMI plane while YouTube owns the zone.
         stopLiveTv();
         stopLgHdmiTv();
-        if (isLgSiPlatform()){
-          // One decoder: silence every ad pipeline BEFORE the stream
-          // claims it, and force an image-only rotation rebuild.
-          try { stopAllAdMedia(); } catch(e){}
-          ADS.sig = '';
-        }
         startYouTubeTv();
         return;
       }
@@ -4704,19 +4695,9 @@ window.ARENA_SIGNAGE_CONFIG = {
     function poolFor(placement){
       var now = new Date();
       var paid = [], house = [];
-      /* webOS has one reliable ad decoder — and while a YouTube override
-         runs, the stream IS that decoder (the iframe decodes through the
-         same media stack; a second webm crashes it and webOS relaunches
-         the SI app). Unlike HDMI, which is a plane, not a decoder.
-         So on LG, video ads sit out while YouTube is on; image ads keep
-         rotating, and videos return automatically when the override
-         ends. Applies to side AND fullscreen (takeover) pools. */
-      var lgYtActive = isLgSiPlatform() &&
-        document.body && document.body.classList.contains('tv-yt');
       for (var i = 0; i < AD_CFG.raw.length; i++){
         var ad = AD_CFG.raw[i];
         if ((ad.placement || 'side') !== placement) continue;
-        if (lgYtActive && ad.media_type === 'video') continue;
         if (!adEligibleNow(ad, now)) continue;
         (ad.house ? house : paid).push(ad);
       }
@@ -4811,11 +4792,6 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (!fsPool.length || TAKEOVER.active || AD_CFG.mode !== 'interval') { TAKEOVER.lastEnd = Date.now(); return; }
       TAKEOVER.rotation = buildRotation(fsPool);
       var item = TAKEOVER.rotation[TAKEOVER.rotIdx % TAKEOVER.rotation.length];
-      if (item && item.media_type === 'video' && isLgSiPlatform() &&
-          document.body && document.body.classList.contains('tv-yt')){
-        TAKEOVER.lastEnd = Date.now();   // skip this cycle entirely
-        return;
-      }
       TAKEOVER.rotIdx += 1;
       TAKEOVER.active = true;
       // Image takeovers make no sound — only a VIDEO takeover with ad
@@ -4990,38 +4966,6 @@ window.ARENA_SIGNAGE_CONFIG = {
       return ADS.list[(ADS.idx + (offset || 0)) % ADS.list.length];
     }
 
-    /* Sequential ad transition: whatever is on screen (webm or webp)
-       fades to black over 0.4s, THEN the callback reveals the next item,
-       which fades in over 0.4s. Opacity-only so it composites on the GPU
-       across LG SI, Windows Chrome, and the Android WebView. The old
-       video keeps playing through its fade-out (pausing mid-fade would
-       freeze the frame); it is paused — and on LG+HDMI its plane fully
-       released — only after the fade completes. */
-    var AD_FADE_MS = 420;
-    function fadeOutCurrentAdVisual(done, explicitOldVideo){
-      var els = adEls();
-      var oldVideo = explicitOldVideo ||
-        ((ADS.active && ADS.active.classList.contains('showing')) ? ADS.active : null);
-      var oldImage = (els.img && els.img.classList.contains('showing')) ? els.img : null;
-      if (!oldVideo && !oldImage){ done(); return; }
-      if (oldVideo) oldVideo.classList.remove('showing');
-      if (oldImage) oldImage.classList.remove('showing');
-      setTimeout(function(){
-        if (oldVideo){
-          try { oldVideo.pause(); } catch(e){}
-          /* LG + HDMI live TV: a paused webm still holds a hardware
-             video plane (HDMI + active + paused = 3 planes overflows
-             the compositor). Fully release it; the swap path re-sets
-             src + load() on reuse. */
-          if (isLgSiPlatform() && document.body && document.body.classList.contains('tv-hdmi')){
-            try { oldVideo.removeAttribute('src'); oldVideo.load(); } catch(e){}
-          }
-        }
-        if (oldImage) oldImage.style.display = 'none';
-        done();
-      }, AD_FADE_MS);
-    }
-
     function stopAllAdMedia(){
       if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
       var els = adEls();
@@ -5032,7 +4976,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         v.classList.remove('showing');
         v.loop = false;
       });
-      if (els.img){ els.img.classList.remove('showing'); els.img.style.display = 'none'; }
+      if (els.img) els.img.style.display = 'none';
       ADS.active = null;
       ADS.swapping = false;
     }
@@ -5102,75 +5046,31 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
       var ad = adAt(0);
       if (!ad) return;
-      if (isLgSiPlatform() && ad.media_type !== 'image' &&
-          document.body && document.body.classList.contains('tv-yt')){
-        /* Hard gate: one decoder, and the YouTube stream owns it. A webm
-           must never reach playback here — not from a stale rotation
-           list, not from a takeover item, not from any race. Rebuild the
-           rotation image-only right now instead of waiting for a poll. */
-        if (TAKEOVER.active){ endTakeover(); return; }
-        stopAllAdMedia();
-        ADS.sig = '';
-        try { updateAds(poolFor('side')); } catch(e){}
-        return;
-      }
       rememberCurrentAd(ad);
 
       if (ad.media_type === 'image'){
-        // Image ad: fade out whatever is showing, then fade the image in.
+        // Image ad: hide native surface / cover the videos with the image
         if (hasNativePlayer()){ try { window.NativePlayer.stop(); } catch(e){} }
         var imageMediaUrl = mediaProxyUrl(ad.media_url);
-        fadeOutCurrentAdVisual(function(){
-          var reveal = function(){
-            els.img.onload = null; els.img.onerror = null;
-            els.img.classList.add('showing');   // 0.4s fade in
-            try {
-              if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(els.img);
-            } catch(e){}
-            var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
-            ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
-            // Preload the next video ad behind the image so it starts
-            // instantly — except on LG (strict one-decoder rule).
-            if (!isLgSiPlatform()) preloadNextInto(ADS.active === els.a ? els.b : els.a);
-          };
-          var directUrl = ad.media_url;
-          var attempt = 0;
-          els.img.onerror = function(){
-            attempt += 1;
-            if (attempt === 1 && directUrl && directUrl !== imageMediaUrl){
-              // Retry once straight from storage, bypassing the proxy/cache.
-              els.img.src = directUrl;
-              return;
-            }
-            els.img.onload = null; els.img.onerror = null;
-            // Never skip silently — the dashboard must see why.
-            reportPlayerError('ad_image_load', 'Image ad failed to load after retry', {
-              campaign_id: ad.id || null,
-              url: String(imageMediaUrl || '').slice(0, 300),
-              yt_active: !!(document.body && document.body.classList.contains('tv-yt')),
-              attempts: attempt
-            });
-            nextAd();
-          };
-          els.img.onload = reveal;
-          prepareMediaElementForUrl(els.img, imageMediaUrl);
-          els.img.style.display = 'block';       // visible but opacity 0
-          els.img.src = imageMediaUrl;
-          if (els.img.complete && els.img.naturalWidth) reveal();
-        });
+        prepareMediaElementForUrl(els.img, imageMediaUrl);
+        els.img.src = imageMediaUrl;
+        els.img.style.display = 'block';
+        try {
+          if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(els.img);
+        } catch(e){}
+        try { if (ADS.active) ADS.active.pause(); } catch(e){}
+        var secs = Math.min(120, Math.max(3, Number(ad.image_duration) || 10));
+        ADS.imgTimer = setTimeout(function(){ reportPlay(ad.id); nextAd(); }, secs * 1000);
+        // Preload the next video ad behind the image so it starts instantly
+        preloadNextInto(ADS.active === els.a ? els.b : els.a);
         return;
       }
 
       // Android APK path: hardware-decoded native playback with disk cache.
       // (native surface sits above the WebView, so hide the image immediately)
       if (hasNativePlayer()){
-        // Fade out a showing image before the native surface takes over.
-        // (Native video sits above the WebView, so its own appearance is a
-        // cut — a true native fade needs an APK bridge addition.)
-        fadeOutCurrentAdVisual(function(){
-          els.img.style.display = 'none';
-          nativePlayCurrent(ad);
-        });
+        els.img.style.display = 'none';
+        nativePlayCurrent(ad);
         return;
       }
       // Browser path: leave the image covering the videos until the incoming
@@ -5216,52 +5116,31 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (document.body && (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover'))) applyTransitionClass(incoming);
       } catch(e){}
       var incomingMediaUrl = mediaProxyUrl(ad.media_url);
-      var beginIncomingLoad = function(){
-        if (incoming.getAttribute('src') !== incomingMediaUrl){
-          prepareMediaElementForUrl(incoming, incomingMediaUrl);
-          incoming.setAttribute('src', incomingMediaUrl);
-          try { incoming.load(); } catch(e){}
-        } else if (incoming.ended || incoming.readyState === 0){
-          // Replaying a finished element without load() renders black on many TV engines
-          try { incoming.load(); } catch(e){}
-        } else {
-          try { incoming.currentTime = 0; } catch(e){}
-        }
-        // webOS: play() before sufficient buffering shows a frame, stalls, and
-        // restarts decode (visible "replay"). Start only when ready; the element
-        // is hidden until 'playing' fires, so waiting costs nothing visually.
-        startWhenReady(incoming);
-        // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
-        if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
-        ADS.swapTimer = setTimeout(function(){
-          if (!ADS.swapping) return;
-          if (!ADS.rescued){
-            ADS.rescued = true;
-            try { incoming.load(); startWhenReady(incoming); } catch(e){}
-            ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
-          } else { ADS.rescued = false; nextAd(); }
-        }, 5000);
-      };
-      ADS.swapping = true;
-      if (isLgSiPlatform()){
-        /* webOS handles ONE ad decoder reliably (same doctrine as the
-           takeover's release-first rule). Two concurrent webm pipelines
-           beside the HDMI plane crash the media stack, and webOS then
-           relaunches the whole SI app (the reload loop). Sequence
-           strictly: fade out + pause + fully release the old ad, THEN
-           load the incoming one. The brief black beat in the column is
-           covered by the fade-in. */
-        var oldToRelease = (ADS.active && ADS.active !== incoming) ? ADS.active : null;
-        fadeOutCurrentAdVisual(function(){
-          if (oldToRelease){
-            try { oldToRelease.pause(); oldToRelease.removeAttribute('src'); oldToRelease.load(); } catch(e){}
-            oldToRelease.classList.remove('showing');
-          }
-          beginIncomingLoad();
-        }, oldToRelease);
+      if (incoming.getAttribute('src') !== incomingMediaUrl){
+        prepareMediaElementForUrl(incoming, incomingMediaUrl);
+        incoming.setAttribute('src', incomingMediaUrl);
+        try { incoming.load(); } catch(e){}
+      } else if (incoming.ended || incoming.readyState === 0){
+        // Replaying a finished element without load() renders black on many TV engines
+        try { incoming.load(); } catch(e){}
       } else {
-        beginIncomingLoad();
+        try { incoming.currentTime = 0; } catch(e){}
       }
+      ADS.swapping = true;
+      // webOS: play() before sufficient buffering shows a frame, stalls, and
+      // restarts decode (visible "replay"). Start only when ready; the element
+      // is hidden until 'playing' fires, so waiting costs nothing visually.
+      startWhenReady(incoming);
+      // Swap rescue: if no 'playing' within 5s, hard-reload once, then skip
+      if (ADS.swapTimer) clearTimeout(ADS.swapTimer);
+      ADS.swapTimer = setTimeout(function(){
+        if (!ADS.swapping) return;
+        if (!ADS.rescued){
+          ADS.rescued = true;
+          try { incoming.load(); startWhenReady(incoming); } catch(e){}
+          ADS.swapTimer = setTimeout(function(){ if (ADS.swapping){ ADS.rescued = false; nextAd(); } }, 5000);
+        } else { ADS.rescued = false; nextAd(); }
+      }, 5000);
       // reveal + hide-old happens in the 'playing' listener below
     }
 
@@ -5298,28 +5177,32 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       function wire(v, other){
         v.addEventListener('playing', function(){
-          // First decoded frame is ready. 'playing' also refires on loop
-          // wraps and stall recoveries — if this element is already the
-          // visible one, only do housekeeping.
+          // First decoded frame is ready: crossfade, never show the play overlay.
+          v.classList.add('showing');
+          if (ADS.active && ADS.active !== v){
+            var old = ADS.active;
+            old.classList.remove('showing');
+            setTimeout(function(){
+              try { old.pause(); } catch(e){}
+              /* LG + HDMI live TV: a paused webm still holds a hardware
+                 video plane. HDMI + active ad + paused ad = 3 planes,
+                 which overflows the compositor and the spare plane bleeds
+                 into the TV zone (white strip). Fully release it; the
+                 swap path re-sets src + load() on reuse. */
+              if (isLgSiPlatform() && document.body && document.body.classList.contains('tv-hdmi')){
+                try { old.removeAttribute('src'); old.load(); } catch(e){}
+              }
+            }, 300);
+          }
+          ADS.active = v;
           ADS.swapping = false;
           ADS.rescued = false;
           if (ADS.swapTimer){ clearTimeout(ADS.swapTimer); ADS.swapTimer = null; }
-          if (v === ADS.active && v.classList.contains('showing')) return;
-          var oldV = (!isLgSiPlatform() && ADS.active && ADS.active !== v && ADS.active.classList.contains('showing')) ? ADS.active : null;
-          ADS.active = v;
-          // Sequential fade: old ad (video or image) fades to black first,
-          // then this element fades in. The incoming video decodes hidden
-          // during the fade-out, so no play overlay is ever visible.
-          fadeOutCurrentAdVisual(function(){
-            if (ADS.active !== v) return;   // rotation moved on mid-fade
-            v.classList.add('showing');
-          }, oldV);
+          var imgEl = document.getElementById('ad-image');
+          if (imgEl) imgEl.style.display = 'none'; // image stays up until this first frame
           // Preload only when there is a genuinely different next item.
           // Single-ad playback must keep the second LG decoder released.
-          // On LG, never preload: strict one-decoder sequencing releases
-          // it anyway, and a loaded-but-idle webm pipeline is exactly
-          // what destabilizes webOS 6.0 beside the HDMI plane.
-          if (ADS.list.length > 1 && !isLgSiPlatform()) preloadNextInto(other);
+          if (ADS.list.length > 1) preloadNextInto(other);
         });
 
         v.addEventListener('ended', function(){

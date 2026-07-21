@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.27
+# ArenaSignage Player v1.5.22
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -267,56 +267,3 @@ Supabase schema (beyond the documented command types) are untouched.
   takeover item to be a VIDEO with fullscreen audio enabled. Static
   image takeovers (webp/jpg/png) make no sound and no longer mute the
   live TV. Applies to USB capture, LG HDMI, and YouTube sources alike.
-
-### 1.5.23 — sequential fade between side ads
-- Every side-ad transition now fades: the outgoing ad (webm or webp)
-  fades to black over 0.4s, then the incoming one fades in over 0.4s —
-  all four combos covered. Image ads use the same opacity/class
-  mechanics as videos (previously display:none hard cuts).
-- Opacity-only transitions (GPU-composited) for smoothness on LG SI,
-  Windows Chrome kiosk, and the Android WebView.
-- The outgoing webm keeps playing through its fade-out; pause — and the
-  LG+HDMI hardware-plane release from 1.5.17 — happen only after the
-  fade completes, so LG panels fade instead of flashing.
-- Android note: native webm playback renders above the WebView, so a
-  fading image + appearing native video is a fade-out/cut; a true
-  native fade-in needs a future APK bridge addition.
-
-### 1.5.24 — LG strict one-decoder fade sequencing (fixes SI crash loop)
-- 1.5.23's fade kept the outgoing webm decoding while the incoming webm
-  also decoded — two ad pipelines beside the HDMI plane crashed the
-  webOS 6.0 media stack and the OS relaunched the SI app in a loop.
-- On lg_si, ad transitions now sequence strictly: fade out, pause, fully
-  release the old ad's media, THEN load and fade in the next. Hidden-
-  buffer preloads are disabled on LG entirely (an idle loaded webm
-  pipeline destabilizes webOS beside the HDMI plane). A brief black beat
-  in the ad column between fades is covered by the fade-in.
-- Windows Chrome and Android WebView keep the 1.5.23 overlapped fade.
-
-### 1.5.25 — video ads sit out during YouTube overrides on LG
-- A YouTube override decodes through the same webOS media stack; a webm
-  ad starting beside it crashed the media pipeline and relaunched the
-  SI app on every video ad. (HDMI is an external-input plane, not a
-  decoder, which is why webm ads coexist with it under 1.5.24's strict
-  sequencing.)
-- On lg_si while tv-yt is active, both ad pools (side and fullscreen)
-  exclude video ads: images keep rotating, videos resume automatically
-  when the override ends or expires. Other platforms unaffected.
-
-### 1.5.26 — hard gates: webm can never start beside a YouTube stream on LG
-- Defense in depth on top of 1.5.25's pool filter. Three independent
-  gates: (1) playCurrentAd refuses to start any non-image ad while
-  tv-yt is active on lg_si and rebuilds the rotation image-only on the
-  spot; (2) activating a YouTube override on LG silences all ad media
-  and forces a filtered rotation rebuild before the stream claims the
-  decoder; (3) beginTakeover skips a cycle if its chosen item is a
-  video during an active override. A webm structurally cannot reach the
-  decoder while YouTube runs, regardless of stale lists, queued
-  takeovers, or timing races.
-
-### 1.5.27 — image-ad load failures retry and report
-- 1.5.23's image fade skipped a failed image silently, which made load
-  failures look like ads "not playing" with no trace. A failed image now
-  retries once directly from storage (bypassing the media proxy), and if
-  it still fails, reports ad_image_load to player_errors with the
-  campaign, URL, and whether a YouTube override was active — then skips.
