@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.24
+# ArenaSignage Player v1.5.25
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -292,3 +292,13 @@ Supabase schema (beyond the documented command types) are untouched.
   pipeline destabilizes webOS beside the HDMI plane). A brief black beat
   in the ad column between fades is covered by the fade-in.
 - Windows Chrome and Android WebView keep the 1.5.23 overlapped fade.
+
+### 1.5.25 — video ads sit out during YouTube overrides on LG
+- A YouTube override decodes through the same webOS media stack; a webm
+  ad starting beside it crashed the media pipeline and relaunched the
+  SI app on every video ad. (HDMI is an external-input plane, not a
+  decoder, which is why webm ads coexist with it under 1.5.24's strict
+  sequencing.)
+- On lg_si while tv-yt is active, both ad pools (side and fullscreen)
+  exclude video ads: images keep rotating, videos resume automatically
+  when the override ends or expires. Other platforms unaffected.
