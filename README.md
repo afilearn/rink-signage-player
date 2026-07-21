@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.28
+# ArenaSignage Player v1.5.29
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -329,3 +329,15 @@ Supabase schema (beyond the documented command types) are untouched.
   fires only on the transition into YouTube mode (tv-yt not yet set).
   The other two gates (playCurrentAd hard gate, takeover item check) are
   unchanged and keep webm structurally off the decoder during streams.
+
+### 1.5.29 — override flap guard + LG live TV documentation
+- On marginal networks a failed poll served a stale cached payload with
+  no YouTube fields, tearing the stream down for one cycle and — worse —
+  deactivating the webm filter mid-stream (black webm slots, decoder
+  stress), then rebuilding the stream on the next good poll. The
+  override now drops only after TWO consecutive payloads without it;
+  expiry timestamps still end it exactly on time.
+- Added LIVETV-LG-NOTES.md: the plane-vs-decoder model, all encoded LG
+  rules, and production recommendations (ethernet; streaming stick into
+  HDMI as the robust "stream + webm ads" setup; animated webp as the
+  zero-decoder ad format during browser streams).

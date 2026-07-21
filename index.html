@@ -1254,7 +1254,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.28';
+    var PLAYER_VERSION = '1.5.29';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4757,8 +4757,24 @@ window.ARENA_SIGNAGE_CONFIG = {
           (data.content_mode === 'livetv' ? 'livetv' : 'schedule');
         AD_CFG.livetvFullscreen = data.livetv_fullscreen === true;
         AD_CFG.livetvAudio = data.livetv_audio === true;
-        AD_CFG.ytUrl = data.livetv_yt_url || null;
-        AD_CFG.ytUntil = data.livetv_yt_until || null;
+        /* Flap guard: on marginal networks a failed poll falls back to a
+           stale cached payload with no YouTube fields, which used to tear
+           the stream down (and re-admit webm ads mid-stream) for one poll
+           cycle. The override only drops after TWO consecutive payloads
+           without it; expiry timestamps still end it exactly on time. */
+        var polledYtUrl = data.livetv_yt_url || null;
+        if (polledYtUrl){
+          AD_CFG.ytUrl = polledYtUrl;
+          AD_CFG.ytUntil = data.livetv_yt_until || null;
+          AD_CFG.ytMissCount = 0;
+        } else if (AD_CFG.ytUrl){
+          AD_CFG.ytMissCount = (AD_CFG.ytMissCount || 0) + 1;
+          if (AD_CFG.ytMissCount >= 2){
+            AD_CFG.ytUrl = null;
+            AD_CFG.ytUntil = null;
+            AD_CFG.ytMissCount = 0;
+          }
+        }
         AD_CFG.hdmiInput = Math.min(4, Math.max(1, Number(data.livetv_hdmi_input) || 1));
         AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
         AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
