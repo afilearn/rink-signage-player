@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.19
+# ArenaSignage Player v1.5.20
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -249,3 +249,14 @@ Supabase schema (beyond the documented command types) are untouched.
   plane blanked for ~1 minute at a time). Reverted; behavior is now
   identical to 1.5.17 (plane release on swap + explicit positioning),
   which is the state to evaluate against the white-strip artifact.
+
+### 1.5.20 — plane overhang fix + faster HDMI attach
+- Side ads wider than the 576px column overhung their element on the
+  hardware plane (cover-crop is a browser concept; planes map the full
+  frame), bleeding a strip over the HDMI TV picture. While tv-hdmi is
+  active, ads render object-fit:contain so the plane never exceeds its
+  rect. Ads sized exactly 576x1080 render identically to before.
+- Restored the gentle 5s play() retry for the HDMI element (removed in
+  1.5.16 alongside the rebuild loop, but the nudge itself was harmless)
+  and added pipeline-event-driven play() starts — cuts the 15s+ TV
+  attach delay after a reload.
