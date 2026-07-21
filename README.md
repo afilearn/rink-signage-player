@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.25
+# ArenaSignage Player v1.5.26
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -302,3 +302,14 @@ Supabase schema (beyond the documented command types) are untouched.
 - On lg_si while tv-yt is active, both ad pools (side and fullscreen)
   exclude video ads: images keep rotating, videos resume automatically
   when the override ends or expires. Other platforms unaffected.
+
+### 1.5.26 — hard gates: webm can never start beside a YouTube stream on LG
+- Defense in depth on top of 1.5.25's pool filter. Three independent
+  gates: (1) playCurrentAd refuses to start any non-image ad while
+  tv-yt is active on lg_si and rebuilds the rotation image-only on the
+  spot; (2) activating a YouTube override on LG silences all ad media
+  and forces a filtered rotation rebuild before the stream claims the
+  decoder; (3) beginTakeover skips a cycle if its chosen item is a
+  video during an active override. A webm structurally cannot reach the
+  decoder while YouTube runs, regardless of stale lists, queued
+  takeovers, or timing races.

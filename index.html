@@ -1254,7 +1254,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.25';
+    var PLAYER_VERSION = '1.5.26';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4659,6 +4659,12 @@ window.ARENA_SIGNAGE_CONFIG = {
         // Release the capture device / HDMI plane while YouTube owns the zone.
         stopLiveTv();
         stopLgHdmiTv();
+        if (isLgSiPlatform()){
+          // One decoder: silence every ad pipeline BEFORE the stream
+          // claims it, and force an image-only rotation rebuild.
+          try { stopAllAdMedia(); } catch(e){}
+          ADS.sig = '';
+        }
         startYouTubeTv();
         return;
       }
@@ -4805,6 +4811,11 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (!fsPool.length || TAKEOVER.active || AD_CFG.mode !== 'interval') { TAKEOVER.lastEnd = Date.now(); return; }
       TAKEOVER.rotation = buildRotation(fsPool);
       var item = TAKEOVER.rotation[TAKEOVER.rotIdx % TAKEOVER.rotation.length];
+      if (item && item.media_type === 'video' && isLgSiPlatform() &&
+          document.body && document.body.classList.contains('tv-yt')){
+        TAKEOVER.lastEnd = Date.now();   // skip this cycle entirely
+        return;
+      }
       TAKEOVER.rotIdx += 1;
       TAKEOVER.active = true;
       // Image takeovers make no sound — only a VIDEO takeover with ad
@@ -5091,6 +5102,18 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (ADS.imgTimer){ clearTimeout(ADS.imgTimer); ADS.imgTimer = null; }
       var ad = adAt(0);
       if (!ad) return;
+      if (isLgSiPlatform() && ad.media_type !== 'image' &&
+          document.body && document.body.classList.contains('tv-yt')){
+        /* Hard gate: one decoder, and the YouTube stream owns it. A webm
+           must never reach playback here — not from a stale rotation
+           list, not from a takeover item, not from any race. Rebuild the
+           rotation image-only right now instead of waiting for a poll. */
+        if (TAKEOVER.active){ endTakeover(); return; }
+        stopAllAdMedia();
+        ADS.sig = '';
+        try { updateAds(poolFor('side')); } catch(e){}
+        return;
+      }
       rememberCurrentAd(ad);
 
       if (ad.media_type === 'image'){
