@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.5
+# ArenaSignage Player v1.6.6
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -439,3 +439,13 @@ Supabase schema (beyond the documented command types) are untouched.
 - Browser screenshots now draw the ticker bar and its current text
   (CSS-animated content is invisible to DOM capture), using the theme's
   ticker colors, in both preset and custom-layout positions.
+
+### 1.6.6 — fix off-platform Cordova alert; schedule visible in dialogs
+- 1.6.5's schedule handler loaded the LG Cordova/SCAP library on every
+  platform; on Windows/Android it alerted "PalmSystem is not defined",
+  and the blocking dialog froze polling so screens showed offline while
+  content kept playing. The library now loads on lg_si only.
+- The device report includes power_schedule_state, so the Power schedule
+  dialog (admin and arena dashboard) opens prefilled with the screen's
+  active schedule and shows a status line; Clear schedule removes it and
+  the status clears on the next report.
