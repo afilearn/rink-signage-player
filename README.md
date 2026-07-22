@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.7
+# ArenaSignage Player v1.6.8
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -458,3 +458,11 @@ Supabase schema (beyond the documented command types) are untouched.
   "Waiting for pairing" dot, arenasignage wordmark bottom-right. Fixes
   the logo/title overlap. Portrait stacks the panels vertically.
   Chrome 79-safe: flex + explicit offsets, opacity-only animation.
+
+### 1.6.8 — pairing screen sizing fix + brand logo
+- The split pairing screen relied on flex:1 and collapsed to content
+  height in some load paths (everything squished to the top third).
+  It now owns the viewport explicitly (100vw x 100vh).
+- The bottom-right mark is the real logo.png (new Arena Signage brand
+  logo shipped in this build); the styled text wordmark renders only if
+  the file is missing.
