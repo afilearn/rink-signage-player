@@ -1297,7 +1297,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.3';
+    var PLAYER_VERSION = '1.6.4';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4162,7 +4162,6 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
     
     function updateTickerText(newText){ 
-      if (CLAYOUT.active && CLAYOUT.tickerText) newText = CLAYOUT.tickerText;
       var norm = normalizeText(newText); 
       
       if (!norm){ 
@@ -4717,7 +4716,7 @@ window.ARENA_SIGNAGE_CONFIG = {
        LG one-decoder rule: only the first media zone may play videos;
        later media zones render images only. Ad engine and takeovers are
        paused in custom mode (ad zones arrive in Phase 2). */
-    var CLAYOUT = { sig: '', active: false, mediaZones: [], hasAds: false, tickerScale: 1, tickerSpeed: 1, tickerText: '' };
+    var CLAYOUT = { sig: '', active: false, mediaZones: [], hasAds: false, tickerScale: 1, tickerSpeed: 1 };
 
     function customLayoutActive(){ return CLAYOUT.active; }
 
@@ -4814,7 +4813,10 @@ window.ARENA_SIGNAGE_CONFIG = {
         var tz0 = document.getElementById('tv-zone');
         if (tz0){ tz0.style.left = tz0.style.top = tz0.style.width = tz0.style.height = tz0.style.zIndex = ''; }
         var tk0 = document.getElementById('ticker');
-        if (tk0){ tk0.style.left = tk0.style.top = tk0.style.width = tk0.style.height = tk0.style.zIndex = ''; }
+        if (tk0){
+          tk0.style.left = tk0.style.top = tk0.style.width = tk0.style.height = tk0.style.zIndex = '';
+          tk0.style.position = tk0.style.right = tk0.style.bottom = '';
+        }
         var root0 = document.getElementById('zone-root');
         if (root0){ while (root0.firstChild) root0.removeChild(root0.firstChild); }
         var ac0 = document.getElementById('ad-column');
@@ -4823,7 +4825,7 @@ window.ARENA_SIGNAGE_CONFIG = {
           ac0.style.right = ac0.style.bottom = ac0.style.zIndex = '';
         }
         CLAYOUT.hasAds = false;
-        CLAYOUT.tickerScale = 1; CLAYOUT.tickerSpeed = 1; CLAYOUT.tickerText = '';
+        CLAYOUT.tickerScale = 1; CLAYOUT.tickerSpeed = 1;
         var tkt0 = document.getElementById('ticker-track');
         if (tkt0) tkt0.style.fontSize = '';
         body.classList.remove('custom-layout', 'custom-no-schedule', 'custom-tv-on', 'custom-ticker-on', 'custom-ads-on');
@@ -4896,16 +4898,22 @@ window.ARENA_SIGNAGE_CONFIG = {
       var tkTrack = document.getElementById('ticker-track');
       if (tk && tickerZone){
         czRect(tk, tickerZone);
+        /* Base #ticker has no position property (static flow) — without
+           an explicit fixed position the zone rect is ignored and the bar
+           lands at the top of the page (the header-covering bug). */
+        tk.style.position = 'fixed';
+        tk.style.right = 'auto';
+        tk.style.bottom = 'auto';
         var ts = tickerZone.settings || {};
         CLAYOUT.tickerScale = Math.min(2, Math.max(0.5, Number(ts.font_scale) || 1));
         CLAYOUT.tickerSpeed = ts.speed === 'slow' ? 0.6 : (ts.speed === 'fast' ? 1.7 : 1);
-        CLAYOUT.tickerText = typeof ts.text === 'string' ? ts.text.trim() : '';
         if (tkTrack){
           tkTrack.style.fontSize = CLAYOUT.tickerScale === 1 ? '' :
             'calc(4vh * var(--font-scale) * ' + CLAYOUT.tickerScale + ')';
         }
       } else {
-        CLAYOUT.tickerScale = 1; CLAYOUT.tickerSpeed = 1; CLAYOUT.tickerText = '';
+        CLAYOUT.tickerScale = 1; CLAYOUT.tickerSpeed = 1;
+        if (tk){ tk.style.position = ''; tk.style.right = ''; tk.style.bottom = ''; }
         if (tkTrack) tkTrack.style.fontSize = '';
       }
       try { applyTicker(); } catch(e){}   // re-measure and restart with new metrics

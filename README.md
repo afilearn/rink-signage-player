@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.3
+# ArenaSignage Player v1.6.4
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -414,3 +414,12 @@ Supabase schema (beyond the documented command types) are untouched.
 - Admin: the Layout select in the Ad layout card is now staged — picking
   Preset or a custom layout applies nothing until Save layout, so preset
   settings can be adjusted before committing the switch.
+
+### 1.6.4 — ticker zone positioning fix; content owned by the facility
+- Base #ticker is statically positioned; the zone rect was ignored and
+  the bar rendered at the top of the page over the header. Ticker zones
+  now pin position:fixed inline (cleared on leave/preset).
+- Removed the zone override-text path: ticker content has one owner —
+  the facility's Live ticker default message + scheduled Announcements.
+  Zones control placement, text size, and speed only, and stay hidden
+  while there is no message to show.
