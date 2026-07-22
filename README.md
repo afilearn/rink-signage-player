@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.2
+# ArenaSignage Player v1.6.3
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -404,3 +404,13 @@ Supabase schema (beyond the documented command types) are untouched.
 - Admin: media zones gain a storage library with in-place Upload and
   Browse/Add (URLs still accepted); preset controls and the YouTube
   override now hide entirely while a custom layout is assigned.
+
+### 1.6.3 — ticker zone settings
+- Ticker zones carry per-zone settings: text size (0.5-2x, scales the
+  4vh base), speed (slow 0.6x / normal / fast 1.7x of the px-per-second
+  scroll rate), and optional override text that replaces the screen's
+  own ticker while the zone is active. With no override, the zone shows
+  the screen's ticker text and time-scheduled Announcements as before.
+- Admin: the Layout select in the Ad layout card is now staged — picking
+  Preset or a custom layout applies nothing until Save layout, so preset
+  settings can be adjusted before committing the switch.
