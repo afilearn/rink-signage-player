@@ -898,6 +898,29 @@ window.ARENA_SIGNAGE_CONFIG = {
     @media (orientation: portrait){
       body.force-landscape.ads-active #tv-zone{ width:70vw; height:100vh; }
     }
+    /* ── Custom canvas layouts (Phase 1) ─────────────────────────────
+       #preset-stage has NO styles by default: its fixed-position children
+       anchor to the viewport exactly as before (zero preset regression).
+       In custom mode with a Schedule zone, the stage gets a transform —
+       fixed children then anchor to the transformed stage, scaling the
+       whole schedule into the zone rect. GPU-only, Chrome 79 safe. */
+    body.custom-layout #preset-stage{
+      position:fixed; top:0; left:0; width:100vw; height:100vh;
+      transform-origin:0 0; overflow:hidden;
+    }
+    body.custom-layout.custom-no-schedule #preset-stage{ display:none; }
+    body.custom-layout #ad-column, body.custom-layout #slide-zone,
+    body.custom-layout #combined-display{ display:none !important; }
+    body.custom-layout #tv-zone{ display:none; }
+    body.custom-layout.custom-tv-on #tv-zone{ display:block; width:auto; height:auto; }
+    body.custom-layout #ticker{ display:none; }
+    body.custom-layout.custom-ticker-on #ticker{ display:block; bottom:auto; }
+    #zone-root{ display:none; }
+    body.custom-layout #zone-root{ display:block; position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; }
+    .cz-media{ position:absolute; overflow:hidden; background:#000; }
+    .cz-media video, .cz-media img{ position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; transition:opacity 0.4s ease; }
+    .cz-media video.showing, .cz-media img.showing{ opacity:1; }
+
     /* Fullscreen TV: the TV owns the whole viewport; side ads never show,
        the ad column appears only while a takeover is running. */
     body.tv-full #tv-zone{ width:100vw !important; height:100vh !important; }
@@ -1091,6 +1114,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   <div id="network-status" title="Network Status"></div>
   <div id="realtime-status"></div>
   
+  <div id="preset-stage">
   <div id="header" class="safe">
     <div id="header-left">
       <img id="header-logo" alt="Logo">
@@ -1144,6 +1168,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     <div id="empty-status">No events scheduled today</div>
     <div id="empty-clock">&mdash;</div>
   </div>
+  </div><!-- /preset-stage -->
 
   <!-- Combined Display Container for Multi-Rink Layouts -->
   <div id="combined-display">
@@ -1151,6 +1176,7 @@ window.ARENA_SIGNAGE_CONFIG = {
   </div>
 
   <div id="ticker"><div id="ticker-track"></div></div>
+  <div id="zone-root" aria-hidden="true"></div>
 
   
   <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
@@ -1268,7 +1294,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.5.32';
+    var PLAYER_VERSION = '1.6.0';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4290,6 +4316,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function applySlides(){
+      if (customLayoutActive()){ return; }
       // Slides never run in combined mode (two schedules own the layout).
       var want = AD_CFG.contentMode === 'slides' && AD_CFG.slides.length > 0 &&
         !(document.body && document.body.classList.contains('combined-mode'));
@@ -4662,7 +4689,228 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
 
+
+    /* ── Custom canvas layout renderer (Phase 1) ─────────────────────────
+       Zones: schedule (preset stack transform-scaled into the rect),
+       media (per-zone webm/webp/image rotation), livetv (reuses the
+       HDMI/capture engines, rect-positioned), ticker (repositioned).
+       Preset mode is untouched: everything here activates only when the
+       payload carries custom_layout, and deactivating restores presets.
+       LG one-decoder rule: only the first media zone may play videos;
+       later media zones render images only. Ad engine and takeovers are
+       paused in custom mode (ad zones arrive in Phase 2). */
+    var CLAYOUT = { sig: '', active: false, mediaZones: [] };
+
+    function customLayoutActive(){ return CLAYOUT.active; }
+
+    function czRect(el, zn){
+      el.style.left = zn.x + '%';
+      el.style.top = zn.y + '%';
+      el.style.width = zn.w + '%';
+      el.style.height = zn.h + '%';
+      el.style.zIndex = String(100 + (Number(zn.z) || 1));
+    }
+
+    function czStopMediaZones(){
+      for (var i = 0; i < CLAYOUT.mediaZones.length; i++){
+        var mz = CLAYOUT.mediaZones[i];
+        if (mz.timer) clearTimeout(mz.timer);
+        if (mz.video){
+          try { mz.video.pause(); mz.video.removeAttribute('src'); mz.video.load(); } catch(e){}
+        }
+      }
+      CLAYOUT.mediaZones = [];
+    }
+
+    function czAdvanceMediaZone(mz){
+      if (!CLAYOUT.active || !mz.items.length) return;
+      var item = mz.items[mz.idx % mz.items.length];
+      mz.idx += 1;
+      var isVideo = /\.webm(\?|$)/i.test(item);
+      if (isVideo && !mz.videoAllowed){
+        // LG: this zone may not decode video — skip to the next item.
+        if (mz.items.length > 1){ czAdvanceMediaZone(mz); }
+        return;
+      }
+      var showEl = isVideo ? mz.video : mz.img;
+      var hideEl = isVideo ? mz.img : mz.video;
+      var reveal = function(){
+        if (!CLAYOUT.active) return;
+        if (hideEl) hideEl.classList.remove('showing');
+        showEl.classList.add('showing');
+      };
+      if (isVideo){
+        mz.video.onended = function(){
+          if (mz.items.length > 1){ czAdvanceMediaZone(mz); }
+          else { try { mz.video.currentTime = 0; mz.video.play(); } catch(e){} }
+        };
+        mz.video.onerror = function(){
+          reportPlayerError('layout_media', 'Zone video failed to load', { url: String(item).slice(0, 300) });
+          if (mz.items.length > 1) czAdvanceMediaZone(mz);
+        };
+        var onPlaying = function(){ mz.video.removeEventListener('playing', onPlaying); reveal(); };
+        mz.video.addEventListener('playing', onPlaying);
+        if (mz.video.getAttribute('src') !== item){
+          mz.video.setAttribute('src', item);
+          try { mz.video.load(); } catch(e){}
+        } else {
+          try { mz.video.currentTime = 0; } catch(e){}
+        }
+        try {
+          var r = mz.video.play();
+          if (r && typeof r.catch === 'function') r.catch(function(){});
+        } catch(e){}
+      } else {
+        mz.img.onload = function(){
+          mz.img.onload = null; mz.img.onerror = null;
+          reveal();
+          if (mz.video){ try { mz.video.pause(); } catch(e){} }
+          if (mz.items.length > 1){
+            mz.timer = setTimeout(function(){ czAdvanceMediaZone(mz); }, mz.imageSecs * 1000);
+          }
+        };
+        mz.img.onerror = function(){
+          mz.img.onload = null; mz.img.onerror = null;
+          reportPlayerError('layout_media', 'Zone image failed to load', { url: String(item).slice(0, 300) });
+          if (mz.items.length > 1) czAdvanceMediaZone(mz);
+        };
+        if (mz.img.getAttribute('src') !== item) mz.img.src = item;
+        else if (mz.img.complete && mz.img.naturalWidth) mz.img.onload();
+      }
+    }
+
+    function applyCustomLayout(){
+      var layout = AD_CFG.customLayout;
+      var zones = layout && Array.isArray(layout.zones) ? layout.zones : [];
+      var sig = zones.length ? JSON.stringify(zones) : '';
+      var body = document.body;
+      if (!body) return;
+      if (!sig){
+        if (!CLAYOUT.active) return;
+        // Leaving custom mode: restore presets fully.
+        CLAYOUT.active = false; CLAYOUT.sig = '';
+        czStopMediaZones();
+        stopLiveTv(); stopLgHdmiTv();
+        var stage = document.getElementById('preset-stage');
+        if (stage) stage.style.transform = '';
+        var tz0 = document.getElementById('tv-zone');
+        if (tz0){ tz0.style.left = tz0.style.top = tz0.style.width = tz0.style.height = tz0.style.zIndex = ''; }
+        var tk0 = document.getElementById('ticker');
+        if (tk0){ tk0.style.left = tk0.style.top = tk0.style.width = tk0.style.height = tk0.style.zIndex = ''; }
+        var root0 = document.getElementById('zone-root');
+        if (root0){ while (root0.firstChild) root0.removeChild(root0.firstChild); }
+        body.classList.remove('custom-layout', 'custom-no-schedule', 'custom-tv-on', 'custom-ticker-on');
+        ADS.sig = '';   // preset pools rebuild on this very poll
+        return;
+      }
+      if (CLAYOUT.sig === sig){
+        // Unchanged — leave everything running, but re-assert zone-driven
+        // TV settings: the preset parser rewrites AD_CFG from rink columns
+        // on every poll and would otherwise revert them within ~30s.
+        for (var ri = 0; ri < zones.length; ri++){
+          if (zones[ri].type === 'livetv'){
+            AD_CFG.hdmiInput = Math.min(4, Math.max(1, Number(zones[ri].settings && zones[ri].settings.hdmi_input) || 1));
+            AD_CFG.livetvAudio = !!(zones[ri].settings && zones[ri].settings.audio === true);
+            break;
+          }
+        }
+        return;
+      }
+      CLAYOUT.sig = sig;
+      CLAYOUT.active = true;
+      czStopMediaZones();
+      stopAllAdMedia();
+      endTakeoverNowIfActive();
+      body.classList.add('custom-layout');
+
+      var root = document.getElementById('zone-root');
+      while (root.firstChild) root.removeChild(root.firstChild);
+
+      var scheduleZone = null, tickerZone = null, tvZone = null;
+      var mediaZones = [];
+      for (var i = 0; i < zones.length; i++){
+        var zn = zones[i];
+        if (zn.type === 'schedule' && !scheduleZone) scheduleZone = zn;
+        else if (zn.type === 'ticker' && !tickerZone) tickerZone = zn;
+        else if (zn.type === 'livetv' && !tvZone) tvZone = zn;
+        else if (zn.type === 'media') mediaZones.push(zn);
+      }
+
+      // Schedule: scale the whole preset stage into the zone rect.
+      body.classList.toggle('custom-no-schedule', !scheduleZone);
+      var stageEl = document.getElementById('preset-stage');
+      if (stageEl && scheduleZone){
+        stageEl.style.transform = 'translate(' + scheduleZone.x + 'vw,' + scheduleZone.y + 'vh)' +
+          ' scale(' + (scheduleZone.w / 100) + ',' + (scheduleZone.h / 100) + ')';
+      } else if (stageEl){
+        stageEl.style.transform = '';
+      }
+
+      // Ticker: reposition the existing ticker element.
+      body.classList.toggle('custom-ticker-on', !!tickerZone);
+      var tk = document.getElementById('ticker');
+      if (tk && tickerZone) czRect(tk, tickerZone);
+
+      // Live TV: rect-position the existing tv-zone and drive the engines.
+      body.classList.toggle('custom-tv-on', !!tvZone);
+      var tz = document.getElementById('tv-zone');
+      if (tvZone && tz){
+        czRect(tz, tvZone);
+        AD_CFG.hdmiInput = Math.min(4, Math.max(1, Number(tvZone.settings && tvZone.settings.hdmi_input) || 1));
+        AD_CFG.livetvAudio = !!(tvZone.settings && tvZone.settings.audio === true);
+        if (isLgSiPlatform()){ stopLiveTv(); startLgHdmiTv(); }
+        else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+          stopLgHdmiTv(); LIVETV.want = true; startLiveTv();
+        }
+      } else {
+        stopLiveTv(); stopLgHdmiTv();
+      }
+
+      // Media zones: first zone may decode video everywhere; later zones
+      // are image-only on LG (one hardware decoder).
+      for (var m = 0; m < mediaZones.length; m++){
+        var zdef = mediaZones[m];
+        var host = document.createElement('div');
+        host.className = 'cz-media';
+        czRect(host, zdef);
+        var fit = (zdef.settings && zdef.settings.fit) === 'cover' ? 'cover' : 'contain';
+        var v = document.createElement('video');
+        v.muted = true; v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+        v.style.objectFit = fit;
+        var im = document.createElement('img');
+        im.alt = ''; im.style.objectFit = fit;
+        host.appendChild(v); host.appendChild(im);
+        root.appendChild(host);
+        var urls = (zdef.settings && Array.isArray(zdef.settings.urls)) ? zdef.settings.urls : [];
+        var items = [];
+        for (var u = 0; u < urls.length; u++){
+          if (/^https:\/\//i.test(urls[u])) items.push(urls[u]);
+        }
+        var mzState = {
+          items: items, idx: 0, video: v, img: im, timer: null,
+          imageSecs: Math.min(120, Math.max(3, Number(zdef.settings && zdef.settings.image_duration) || 10)),
+          videoAllowed: !isLgSiPlatform() || m === 0
+        };
+        CLAYOUT.mediaZones.push(mzState);
+        if (items.length) czAdvanceMediaZone(mzState);
+      }
+    }
+
+    function endTakeoverNowIfActive(){
+      if (TAKEOVER && TAKEOVER.active){
+        try {
+          TAKEOVER.active = false; TAKEOVER.leaving = false; TAKEOVER.mediaType = null;
+          TAKEOVER.lastEnd = Date.now();
+          if (document.body){
+            document.body.classList.remove('fs-takeover');
+            document.body.classList.remove('fs-leaving');
+          }
+        } catch(e){}
+      }
+    }
+
     function applyLiveTv(){
+      if (customLayoutActive()) return;   // zone renderer owns the TV engines
       var ytWant = AD_CFG.contentMode === 'livetv' && AD_CFG.mode !== 'always' &&
         !(document.body && document.body.classList.contains('combined-mode')) &&
         ytOverrideActive();
@@ -4812,6 +5060,8 @@ window.ARENA_SIGNAGE_CONFIG = {
         AD_CFG.transition = ['none','fade','slide','zoom'].indexOf(data.fs_transition) !== -1 ? data.fs_transition : 'fade';
         AD_CFG.slides = Array.isArray(data.slides) ? data.slides : [];
       }
+      AD_CFG.customLayout = data ? (data.custom_layout || null) : AD_CFG.customLayout;
+      try { applyCustomLayout(); } catch(e){}
       try { applySlides(); } catch(e){}
       try { applyLiveTv(); } catch(e){}
       if (document.body){
@@ -4847,6 +5097,13 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.remove('fs-only');
         document.body.classList.remove('fs-rotate');
       }
+      if (customLayoutActive()){
+        // Custom canvas layout: the preset ad engine pauses entirely
+        // (ad zones arrive in Phase 2).
+        updateAds([]);
+        asgSyncMediaCache();
+        return;
+      }
       if (document.body && document.body.classList.contains('tv-yt')){
         // Exclusive stream mode: fullscreen, zero ads (no side rotation,
         // no takeovers). Ads resume automatically when the override ends.
@@ -4869,6 +5126,10 @@ window.ARENA_SIGNAGE_CONFIG = {
       TAKEOVER.pending = false;
       if (!fsPool.length || TAKEOVER.active || AD_CFG.mode !== 'interval') { TAKEOVER.lastEnd = Date.now(); return; }
       TAKEOVER.rotation = buildRotation(fsPool);
+      if (customLayoutActive()){
+        TAKEOVER.lastEnd = Date.now();   // no takeovers in custom layouts (Phase 1)
+        return;
+      }
       if (document.body && document.body.classList.contains('tv-yt')){
         // Exclusive stream mode: no takeovers at all while streaming.
         TAKEOVER.lastEnd = Date.now();

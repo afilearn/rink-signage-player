@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.32
+# ArenaSignage Player v1.6.0
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -370,3 +370,19 @@ Supabase schema (beyond the documented command types) are untouched.
 - Note: on scheduled days the schedule is authoritative — a screen
   manually woken with the remote during the dark window turns back off
   within 30s. Clear or adjust the schedule for special hours.
+
+### 1.6.0 — custom canvas layouts (Phase 1)
+- New zone renderer: when a screen has a custom layout assigned (admin
+  Layouts tab), the player renders its zones — Schedule (the preset
+  stack transform-scaled into the rect, GPU-only), Media (per-zone
+  webm/webp/image rotation with fades; on LG only the first media zone
+  decodes video), Live TV (HDMI on LG / USB capture on Windows,
+  rect-positioned), Ticker (repositioned). Zones use percentage rects
+  from a reusable named layout.
+- Preset mode is byte-identical when no layout is assigned: the new
+  #preset-stage wrapper carries no styles by default, and every custom
+  code path is gated on the payload's custom_layout. The preset ad
+  engine, takeovers, slides, and YouTube overrides pause while a custom
+  layout is active and resume instantly when unassigned (ad zones ship
+  in Phase 2).
+- Requires Worker v1.3.13 + admin v1.6.0 + database/screen_layouts_v1_7.sql.
