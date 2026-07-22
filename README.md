@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.30
+# ArenaSignage Player v1.5.31
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -350,3 +350,10 @@ Supabase schema (beyond the documented command types) are untouched.
   stream is the only media pipeline on the panel) and makes the feature
   behave identically everywhere. The webm hard gates remain underneath
   as defense in depth.
+
+### 1.5.31 — branded splash minimum display time
+- The boot splash (branding.gif) now holds for at least 4 seconds from
+  the moment the branding image appears, instead of flashing for a
+  sub-second on fast loads. Content renders underneath and the splash
+  lifts on schedule with its existing fade. The 25s failsafe bypasses
+  the minimum. Adjust via BOOT_SPLASH_MIN_MS.
