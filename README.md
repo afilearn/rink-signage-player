@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.31
+# ArenaSignage Player v1.5.32
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -357,3 +357,16 @@ Supabase schema (beyond the documented command types) are untouched.
   sub-second on fast loads. Content renders underneath and the splash
   lifts on schedule with its existing fade. The 25s failsafe bypasses
   the minimum. Adjust via BOOT_SPLASH_MIN_MS.
+
+### 1.5.32 — power schedule enforces state, not just moments
+- The schedule was edge-triggered: it only acted in the exact on/off
+  minute, so anything that woke the panel mid-dark-window (app reloads
+  from player updates, panel reboots, power blips) left the screen on
+  until the next boundary. Enforcement is now level-triggered: the
+  player computes the desired state (lit between on_time and off_time
+  on scheduled days, overnight wrap supported) every 30s AND ~20s after
+  every boot, correcting drift within half a minute. One attempt and
+  one error report per state change; unscheduled days stay hands-off.
+- Note: on scheduled days the schedule is authoritative — a screen
+  manually woken with the remote during the dark window turns back off
+  within 30s. Clear or adjust the schedule for special hours.
