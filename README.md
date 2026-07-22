@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.6
+# ArenaSignage Player v1.6.7
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -449,3 +449,12 @@ Supabase schema (beyond the documented command types) are untouched.
   dialog (admin and arena dashboard) opens prefilled with the screen's
   active schedule and shows a status line; Clear schedule removes it and
   the status clears on the next report.
+
+### 1.6.7 — pairing screen redesign (split panel)
+- New pairing layout: giant code on the left over an optional
+  pairing-bg.jpg (repo root — drop in any image; a dark overlay fades it
+  to #121212 at the divider, and the screen degrades to a clean flat
+  split if the file is absent), numbered steps rail on the right, pulsing
+  "Waiting for pairing" dot, arenasignage wordmark bottom-right. Fixes
+  the logo/title overlap. Portrait stacks the panels vertically.
+  Chrome 79-safe: flex + explicit offsets, opacity-only animation.

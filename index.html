@@ -190,86 +190,103 @@ window.ARENA_SIGNAGE_CONFIG = {
       opacity: 1;
     }
 
-    /* Pairing screen - Samsung style */
+    /* Pairing screen — split panel (Option B).
+       Left: giant code over an optional pairing-bg.jpg (repo root) fading
+       to #121212 at the divider; right: numbered steps rail; wordmark
+       bottom-right. Chrome 79-safe: flex, explicit offsets, opacity anim. */
     #code-screen {
+      position: relative;
       flex: 1;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      gap: 5vh;
-      background: linear-gradient(135deg, #3d5875 0%, #2c3e50 100%);
-      padding: 4vh 2vw;
+      flex-direction: row;
+      background: #121212;
+      overflow: hidden;
+      padding: 0;
     }
-    
-    #code-screen h1 { 
-      font-size: calc(4.5vh * var(--font-scale)); 
-      margin: 0; 
-      font-weight: 400; 
-      color: #e8edf2;
-      letter-spacing: 0.05vh;
-    }
-    
-    #screen-code { 
-      font-size: calc(12vh * var(--font-scale)); 
-      font-weight: 700; 
-      background: transparent;
-      padding: 0; 
-      border-radius: 0; 
-      letter-spacing: 2.5vh; 
-      box-shadow: none;
-      border: none; 
-      color: #3dd9eb;
-      text-shadow: 0 0 30px rgba(61, 217, 235, 0.4);
-      margin: 2vh 0;
-    }
-    
-    .pairing-instructions {
-      background: rgba(30, 40, 55, 0.7);
-      padding: 3vh 4vh;
-      border-radius: 1.5vh;
-      max-width: 700px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-    
-    .pairing-step {
+    #pair-left{
+      position: relative;
+      flex: 0 0 56%;
       display: flex;
-      align-items: flex-start;
-      gap: 2vh;
-      margin-bottom: 2.5vh;
-      text-align: left;
+      flex-direction: column;
+      justify-content: center;
+      padding-left: 6vw;
     }
-    
-    .pairing-step:last-child {
-      margin-bottom: 0;
+    #pair-left-bg{
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: url('./pairing-bg.jpg') no-repeat center;
+      background-size: cover;
     }
-    
-    .step-number {
-      font-size: calc(2.2vh * var(--font-scale));
+    #pair-left-fade{
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(to right,
+        rgba(18,18,18,0.62) 0%, rgba(18,18,18,0.80) 55%, #121212 100%);
+    }
+    #pair-left-content{ position: relative; }
+    .pair-label{
+      font-size: calc(2vh * var(--font-scale));
+      letter-spacing: 0.5vw;
+      color: #9a9a9a;
+      margin-bottom: 1.5vh;
+    }
+    #screen-code{
+      font-size: calc(11vh * var(--font-scale));
       font-weight: 700;
-      color: #95a5a6;
-      min-width: 8vh;
-      flex-shrink: 0;
+      letter-spacing: 1.4vw;
+      color: #ED2128;
+      text-shadow: 0 0 40px rgba(237,33,40,0.35);
+      line-height: 1.1;
+      margin: 0;
     }
-    
-    .step-text {
-      font-size: calc(2.2vh * var(--font-scale));
-      color: #d5dce3;
-      line-height: 1.6;
-      padding-top: 0.1vh;
+    .pair-waiting{
+      margin-top: 2.5vh;
+      font-size: calc(1.9vh * var(--font-scale));
+      color: #6a6a6a;
     }
-    
-    .step-url {
-      color: #3dd9eb;
-      text-decoration: none;
-      word-break: break-all;
-      display: block;
+    .pair-dot{
+      display: inline-block;
+      width: 1.1vh; height: 1.1vh;
+      border-radius: 50%;
+      background: #ED2128;
+      margin-right: 0.6vw;
+      animation: pairPulse 2s ease-in-out infinite;
+    }
+    @keyframes pairPulse{ 0%,100%{ opacity: 0.25; } 50%{ opacity: 1; } }
+    @media (prefers-reduced-motion: reduce){ .pair-dot{ animation: none; } }
+    #pair-right{
+      position: relative;
+      flex: 1;
+      border-left: 1px solid #262626;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 4vw;
+    }
+    .pair-step{ margin-bottom: 4vh; text-align: left; }
+    .pair-step:last-child{ margin-bottom: 0; }
+    .pair-step-t{
+      font-size: calc(2.7vh * var(--font-scale));
+      font-weight: 500;
+      color: #efefef;
+    }
+    .pair-step-s{
+      font-size: calc(2vh * var(--font-scale));
+      color: #9a9a9a;
       margin-top: 0.5vh;
     }
-    
+    .pair-step-s .pair-url{ color: #ED2128; }
+    #pair-brand{
+      position: absolute;
+      bottom: 4vh; right: 3vw;
+      font-size: calc(2.4vh * var(--font-scale));
+      color: #cfcfcf;
+    }
+    #pair-brand span{ color: #ED2128; }
+    @media (orientation: portrait){
+      #code-screen{ flex-direction: column; }
+      #pair-left{ flex: 0 0 55%; padding-left: 8vw; }
+      #pair-right{ border-left: none; border-top: 1px solid #262626; padding: 5vh 8vw; }
+    }
+
     #realtime-status { display:none !important; } /* status is for debugging; polling keeps data fresh */
     #realtime-status-unused {
       position: fixed;
@@ -764,21 +781,6 @@ window.ARENA_SIGNAGE_CONFIG = {
     /* ============================================================
        arenasignage - brand polish + portrait / rotation support
        ============================================================ */
-    #code-screen{
-      background:
-        radial-gradient(120% 80% at 50% 0%, rgba(237,33,40,0.12), transparent 60%),
-        linear-gradient(160deg,#161616 0%,#0a0a0a 100%) !important;
-    }
-    #code-screen::before{
-      content:'';
-      position:absolute; top:5vh; left:0; right:0; height:6vh;
-      background:url('./logo.png') no-repeat center / contain;
-    }
-    #code-screen h1{ color:rgba(255,255,255,0.55) !important; font-weight:500 !important; }
-    #screen-code{ color:#ED2128 !important; text-shadow:0 0 40px rgba(237,33,40,0.35) !important; }
-    .pairing-instructions{ background:rgba(255,255,255,0.03) !important; border:1px solid rgba(255,255,255,0.08) !important; }
-    .step-number{ color:#ED2128 !important; }
-    .step-url{ color:#ED2128 !important; }
     .event-row{ border-radius:12px; }
     .live .live-pill{ box-shadow:0 2px 12px rgba(0,0,0,0.35); }
     /* time-first column rhythm */
@@ -801,10 +803,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       #empty-logo{ height:24vh; }
       #ticker.active{ height:7vh; }
       #ticker-track{ font-size:calc(4.6vw * var(--font-scale)); }
-      #code-screen h1{ font-size:calc(5vw * var(--font-scale)) !important; }
       #screen-code{ font-size:calc(16vw * var(--font-scale)); letter-spacing:1.5vw; }
-      .step-number, .step-text{ font-size:calc(2.8vw * var(--font-scale)); }
-      .pairing-instructions{ max-width:86vw; }
+
       .rink-panel-title{ font-size:calc(4.4vw * var(--font-scale)); }
       .rink-panel-clock{ font-size:calc(3.6vw * var(--font-scale)); }
       .rink-panel-events{ font-size:calc(4vw * var(--font-scale)); }
@@ -1134,33 +1134,30 @@ window.ARENA_SIGNAGE_CONFIG = {
   </div>
   
   <div id="code-screen" class="safe">
-    <h1>Pairing with Code</h1>
-    <div id="screen-code">--------</div>
-    
-    <div class="pairing-instructions">
-      <div class="pairing-step">
-        <div class="step-number">STEP 1</div>
-        <div class="step-text">
-          Sign in to the ArenaSignage dashboard:
-          <span class="step-url">https://app.arenasignage.com/dashboard</span>
-        </div>
-      </div>
-      
-      <div class="pairing-step">
-        <div class="step-number">STEP 2</div>
-        <div class="step-text">
-          Select your rink from the dropdown menu.
-        </div>
-      </div>
-      
-      <div class="pairing-step">
-        <div class="step-number">STEP 3</div>
-        <div class="step-text">
-          Enter the screen code above and click "Assign Screen Code".
-        </div>
+    <div id="pair-left">
+      <div id="pair-left-bg"></div>
+      <div id="pair-left-fade"></div>
+      <div id="pair-left-content">
+        <div class="pair-label">SCREEN CODE</div>
+        <div id="screen-code">--------</div>
+        <div class="pair-waiting"><span class="pair-dot"></span>Waiting for pairing&hellip;</div>
       </div>
     </div>
-    
+    <div id="pair-right">
+      <div class="pair-step">
+        <div class="pair-step-t">1 &middot; Sign in</div>
+        <div class="pair-step-s"><span class="pair-url">app.arenasignage.com</span></div>
+      </div>
+      <div class="pair-step">
+        <div class="pair-step-t">2 &middot; Select your rink</div>
+        <div class="pair-step-s">from the dropdown menu</div>
+      </div>
+      <div class="pair-step">
+        <div class="pair-step-t">3 &middot; Assign this code</div>
+        <div class="pair-step-s">enter it and click "Assign Screen Code"</div>
+      </div>
+    </div>
+    <div id="pair-brand">arena<span>signage</span></div>
   </div>
   
   <div id="event-screen">
@@ -1305,7 +1302,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.6';
+    var PLAYER_VERSION = '1.6.7';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
