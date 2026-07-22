@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.0
+# ArenaSignage Player v1.6.1
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -386,3 +386,8 @@ Supabase schema (beyond the documented command types) are untouched.
   layout is active and resume instantly when unassigned (ad zones ship
   in Phase 2).
 - Requires Worker v1.3.13 + admin v1.6.0 + database/screen_layouts_v1_7.sql.
+
+### 1.6.1 — media zones accept mp4
+- Zone playlists detect .webm/.mp4/.m4v as video; every other URL is
+  tried as an image, so extensionless direct image links (e.g. CDN URLs)
+  work. Videos still need a real file extension in the URL.
