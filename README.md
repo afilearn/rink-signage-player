@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.4
+# ArenaSignage Player v1.6.5
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -423,3 +423,19 @@ Supabase schema (beyond the documented command types) are untouched.
   the facility's Live ticker default message + scheduled Announcements.
   Zones control placement, text size, and speed only, and stay hidden
   while there is no message to show.
+
+### 1.6.5 — YouTube zones, soft power everywhere, ticker in screenshots
+- New "YouTube" zone type for custom layouts on Windows/Android: a
+  rect-positioned live-stream embed with optional audio, coexisting
+  with ad and media zones (those platforms decode multiple streams).
+  LG panels skip the zone entirely — one decoder; the fullscreen stream
+  override remains the LG path. Continuous streams use ~3-5 Mbps.
+- Soft power on Windows/Android: display on/off commands and the power
+  schedule now work on every platform. Non-LG screens sleep under a
+  pure-black overlay with ALL media pipelines stopped (ads, zones, TV,
+  streams); polling, heartbeats and remote commands keep running, and
+  waking rebuilds everything. Same level-triggered schedule enforcement
+  as LG, including boot-time correction.
+- Browser screenshots now draw the ticker bar and its current text
+  (CSS-animated content is invisible to DOM capture), using the theme's
+  ticker colors, in both preset and custom-layout positions.

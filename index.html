@@ -923,6 +923,13 @@ window.ARENA_SIGNAGE_CONFIG = {
     .cz-media{ position:absolute; overflow:hidden; background:#000; }
     .cz-media video, .cz-media img{ position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; transition:opacity 0.4s ease; }
     .cz-media video.showing, .cz-media img.showing{ opacity:1; }
+    .cz-yt{ position:absolute; overflow:hidden; background:#000; }
+    .cz-yt iframe{ position:absolute; top:0; left:0; width:100%; height:100%; border:0; }
+    /* Soft power: on platforms without true display control the screen
+       sleeps under a pure-black overlay with all media pipelines stopped;
+       polling, heartbeats and remote commands keep running underneath. */
+    #power-sleep{ display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:2147483000; }
+    body.power-sleep #power-sleep{ display:block; }
 
     /* Fullscreen TV: the TV owns the whole viewport; side ads never show,
        the ad column appears only while a takeover is running. */
@@ -1180,6 +1187,7 @@ window.ARENA_SIGNAGE_CONFIG = {
 
   <div id="ticker"><div id="ticker-track"></div></div>
   <div id="zone-root" aria-hidden="true"></div>
+  <div id="power-sleep" aria-hidden="true"></div>
 
   
   <div id="boot-splash" aria-hidden="true"><img id="boot-splash-img" alt=""></div>
@@ -1297,7 +1305,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.4';
+    var PLAYER_VERSION = '1.6.5';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -2754,8 +2762,8 @@ window.ARENA_SIGNAGE_CONFIG = {
         reload: true,
         restart_app: restart,
         reboot: isLg,
-        display_power: isLg,
-        power_schedule: isLg,
+        display_power: true,     // LG: real panel control; others: sleep overlay
+        power_schedule: true,
         screenshot_native: caps.screenshot_native === true,
         screenshot_method: caps.screenshot_method || '',
         native_app_version: caps.app_version || '',
@@ -3305,6 +3313,36 @@ window.ARENA_SIGNAGE_CONFIG = {
             }
           } catch(e){}
 
+          // Ticker: the scrolling text lives in a CSS animation, which DOM
+          // capture cannot render — draw the bar and current text manually.
+          try {
+            var tkHolder = document.getElementById('ticker');
+            if (tkHolder && tkHolder.classList.contains('active') && TICKER.text){
+              var tr = tkHolder.getBoundingClientRect();
+              if (tr.width > 4 && tr.height > 4){
+                var sx = finalCanvas.width / window.innerWidth;
+                var sy = finalCanvas.height / window.innerHeight;
+                var rx = Math.round(tr.left * sx), ry = Math.round(tr.top * sy);
+                var rw = Math.round(tr.width * sx), rh = Math.round(tr.height * sy);
+                var tkStyle = window.getComputedStyle(tkHolder);
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(rx, ry, rw, rh);
+                ctx.clip();
+                ctx.fillStyle = tkStyle.backgroundColor || '#111111';
+                ctx.fillRect(rx, ry, rw, rh);
+                var trackEl = document.getElementById('ticker-track');
+                var txtColor = trackEl ? window.getComputedStyle(trackEl).color : '#dddddd';
+                ctx.fillStyle = txtColor || '#dddddd';
+                ctx.font = Math.max(10, Math.round(rh * 0.5)) + 'px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(TICKER.text, rx + Math.round(rh * 0.4), ry + rh / 2);
+                ctx.restore();
+              }
+            }
+          } catch(e){}
+
           return compositeAdIntoScreenshot(finalCanvas);
         }).then(function(canvas){
           resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.72), type: 'dom', width: canvas.width, height: canvas.height });
@@ -3571,13 +3609,17 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function checkPowerSchedule(){
-      if (platformDetails().platform !== 'lg_si') return;
       var schedule = readPowerSchedule();
       if (!schedule) return;
       var desired = desiredPowerState(schedule, new Date());
       if (!desired || powerScheduleLastIssued === desired) return;
       var issued = desired;
       powerScheduleLastIssued = issued;   // one attempt + one report per state change
+      if (platformDetails().platform !== 'lg_si'){
+        // Windows / Android: soft power via the sleep overlay.
+        setDisplaySleep(issued === 'off');
+        return;
+      }
       scapSetDisplay(issued, function(){}, function(err){
         reportPlayerError('power_schedule', (err && err.message) || 'scheduled display switch failed', { action: issued });
       });
@@ -3931,8 +3973,10 @@ window.ARENA_SIGNAGE_CONFIG = {
       if (command.type === 'display_power') {
         var wantMode = command.payload && command.payload.mode === 'off' ? 'off' : 'on';
         if (platformDetails().platform !== 'lg_si') {
+          // Soft power: black overlay + all media pipelines stopped.
+          setDisplaySleep(wantMode === 'off');
           deviceState.commandBusy = false;
-          ackCommand(command.id, 'failed', {}, 'Display power is only supported on LG webOS panels');
+          ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode, via: 'sleep_overlay' });
           return;
         }
         scapSetDisplay(wantMode, function(usedService){
@@ -3945,11 +3989,6 @@ window.ARENA_SIGNAGE_CONFIG = {
         return;
       }
       if (command.type === 'set_power_schedule') {
-        if (platformDetails().platform !== 'lg_si') {
-          deviceState.commandBusy = false;
-          ackCommand(command.id, 'failed', {}, 'Power schedule is only supported on LG webOS panels');
-          return;
-        }
         var proposed = command.payload || {};
         if (!validPowerSchedule(proposed)) {
           deviceState.commandBusy = false;
@@ -4333,7 +4372,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function applySlides(){
-      if (customLayoutActive()){ return; }
+      if (customLayoutActive() || isDisplaySleeping()){ return; }
       // Slides never run in combined mode (two schedules own the layout).
       var want = AD_CFG.contentMode === 'slides' && AD_CFG.slides.length > 0 &&
         !(document.body && document.body.classList.contains('combined-mode'));
@@ -4797,6 +4836,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function applyCustomLayout(){
+      if (isDisplaySleeping()) return;   // wake clears CLAYOUT.sig and rebuilds
       var layout = AD_CFG.customLayout;
       var zones = layout && Array.isArray(layout.zones) ? layout.zones : [];
       var sig = zones.length ? JSON.stringify(zones) : '';
@@ -4807,6 +4847,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         // Leaving custom mode: restore presets fully.
         CLAYOUT.active = false; CLAYOUT.sig = '';
         czStopMediaZones();
+        czDestroyYtZone();
         stopLiveTv(); stopLgHdmiTv();
         var stage = document.getElementById('preset-stage');
         if (stage) stage.style.transform = '';
@@ -4849,6 +4890,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       CLAYOUT.sig = sig;
       CLAYOUT.active = true;
       czStopMediaZones();
+      czDestroyYtZone();
       stopAllAdMedia();
       endTakeoverNowIfActive();
       body.classList.add('custom-layout');
@@ -4856,7 +4898,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       var root = document.getElementById('zone-root');
       while (root.firstChild) root.removeChild(root.firstChild);
 
-      var scheduleZone = null, tickerZone = null, tvZone = null, adsZone = null;
+      var scheduleZone = null, tickerZone = null, tvZone = null, adsZone = null, ytZoneDef = null;
       var mediaZones = [];
       for (var i = 0; i < zones.length; i++){
         var zn = zones[i];
@@ -4864,7 +4906,19 @@ window.ARENA_SIGNAGE_CONFIG = {
         else if (zn.type === 'ticker' && !tickerZone) tickerZone = zn;
         else if (zn.type === 'livetv' && !tvZone) tvZone = zn;
         else if (zn.type === 'ads' && !adsZone) adsZone = zn;
+        else if (zn.type === 'youtube' && !ytZoneDef) ytZoneDef = zn;
         else if (zn.type === 'media') mediaZones.push(zn);
+      }
+
+      // YouTube zone: Windows/Android only — LG skips it (one decoder;
+      // the fullscreen stream override is the LG path).
+      czDestroyYtZone();
+      if (ytZoneDef && !isLgSiPlatform()){
+        var ytHost = document.createElement('div');
+        ytHost.className = 'cz-yt';
+        czRect(ytHost, ytZoneDef);
+        root.appendChild(ytHost);
+        czBuildYtZone(ytHost, ytZoneDef);
       }
 
       // Ad campaigns zone: the full side-ad engine, confined to the rect.
@@ -4963,6 +5017,99 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     }
 
+    /* YouTube zone (custom layouts, Windows/Android only). LG panels skip
+       it entirely — one decoder, and the fullscreen stream override is the
+       LG path. Separate player instance from the override's YTTV. */
+    var CZYT = { player: null, ready: false, videoId: null, apiCallbacks: [] };
+
+    function czYtApi(cb){
+      if (window.YT && window.YT.Player){ cb(); return; }
+      CZYT.apiCallbacks.push(cb);
+      if (CZYT.apiCallbacks.length > 1) return;   // script already requested
+      var prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function(){
+        if (typeof prev === 'function'){ try { prev(); } catch(e){} }
+        var cbs = CZYT.apiCallbacks; CZYT.apiCallbacks = [];
+        for (var i = 0; i < cbs.length; i++){ try { cbs[i](); } catch(e){} }
+      };
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')){
+        var tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+      }
+    }
+
+    function czDestroyYtZone(){
+      if (CZYT.player){ try { CZYT.player.destroy(); } catch(e){} }
+      CZYT.player = null; CZYT.ready = false; CZYT.videoId = null;
+    }
+
+    function czBuildYtZone(host, zn){
+      var id = ytVideoIdFrom(zn.settings && zn.settings.url);
+      if (!id){
+        reportPlayerError('layout_youtube', 'YouTube zone has no valid video URL', {});
+        return;
+      }
+      var wantAudio = !!(zn.settings && zn.settings.audio === true);
+      CZYT.videoId = id;
+      czYtApi(function(){
+        if (CZYT.videoId !== id || !document.body.contains(host)) return;
+        var mount = document.createElement('div');
+        host.appendChild(mount);
+        CZYT.player = new window.YT.Player(mount, {
+          videoId: id,
+          playerVars: {
+            autoplay: 1, mute: 1, controls: 0, disablekb: 1, fs: 0,
+            iv_load_policy: 3, modestbranding: 1, rel: 0, playsinline: 1
+          },
+          events: {
+            onReady: function(ev){
+              CZYT.ready = true;
+              try { ev.target.playVideo(); } catch(e){}
+              try { if (wantAudio) ev.target.unMute(); else ev.target.mute(); } catch(e){}
+            },
+            onStateChange: function(ev){
+              if (ev.data === window.YT.PlayerState.ENDED ||
+                  ev.data === window.YT.PlayerState.PAUSED){
+                try { ev.target.playVideo(); } catch(e){}
+              }
+            },
+            onError: function(ev){
+              reportPlayerError('layout_youtube', 'YT zone player error ' + (ev && ev.data), {
+                url: String(zn.settings && zn.settings.url || '').slice(0, 200)
+              });
+            }
+          }
+        });
+      });
+    }
+
+    function isDisplaySleeping(){
+      return !!(document.body && document.body.classList.contains('power-sleep'));
+    }
+
+    function setDisplaySleep(on){
+      var body = document.body;
+      if (!body) return;
+      var sleeping = body.classList.contains('power-sleep');
+      if (on === sleeping) return;
+      if (on){
+        body.classList.add('power-sleep');
+        try { stopAllAdMedia(); } catch(e){}
+        try { czStopMediaZones(); } catch(e){}
+        try { czDestroyYtZone(); } catch(e){}
+        try { stopLiveTv(); } catch(e){}
+        try { stopLgHdmiTv(); } catch(e){}
+        try { destroyYouTubeTv(); } catch(e){}
+        try { endTakeoverNowIfActive(); } catch(e){}
+      } else {
+        body.classList.remove('power-sleep');
+        ADS.sig = '';
+        CLAYOUT.sig = '';
+        try { applyAdConfig(null); } catch(e){}   // rebuild everything
+      }
+    }
+
     function endTakeoverNowIfActive(){
       if (TAKEOVER && TAKEOVER.active){
         try {
@@ -4977,6 +5124,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function applyLiveTv(){
+      if (isDisplaySleeping()) return;
       if (customLayoutActive()) return;   // zone renderer owns the TV engines
       var ytWant = AD_CFG.contentMode === 'livetv' && AD_CFG.mode !== 'always' &&
         !(document.body && document.body.classList.contains('combined-mode')) &&
@@ -5164,6 +5312,10 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.remove('fs-only');
         document.body.classList.remove('fs-rotate');
       }
+      if (isDisplaySleeping()){
+        updateAds([]);
+        return;
+      }
       if (customLayoutActive()){
         // Custom canvas layout: the side-ad engine runs only when the
         // layout contains an Ad campaigns zone (rect-confined); takeovers
@@ -5194,8 +5346,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       TAKEOVER.pending = false;
       if (!fsPool.length || TAKEOVER.active || AD_CFG.mode !== 'interval') { TAKEOVER.lastEnd = Date.now(); return; }
       TAKEOVER.rotation = buildRotation(fsPool);
-      if (customLayoutActive()){
-        TAKEOVER.lastEnd = Date.now();   // no takeovers in custom layouts (Phase 1)
+      if (customLayoutActive() || isDisplaySleeping()){
+        TAKEOVER.lastEnd = Date.now();
         return;
       }
       if (document.body && document.body.classList.contains('tv-yt')){
