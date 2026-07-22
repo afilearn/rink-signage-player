@@ -25,10 +25,13 @@ the whole SI app (looks like the player "crashing/rebooting").
   decoder. Requires strict sequencing (see below).
 - HDMI TV + webp ads: works.
 - YouTube TV + webp ads: works.
-- YouTube TV + webm ads: **impossible on this hardware.** The stream IS
-  the decoder. The player structurally blocks webm while `tv-yt` is
-  active (pool filter + playCurrentAd hard gate + takeover item check).
-  This is a silicon ceiling, not a software bug.
+- YouTube TV + any ads: **product rule (1.5.30): the stream is an
+  exclusive mode** — always fullscreen, zero side ads, zero takeovers,
+  on every platform. This defines away the LG decoder conflict (the
+  stream is the only media pipeline) and keeps the feature meaning one
+  thing everywhere. The structural webm gates remain underneath as
+  defense in depth. For "stream + ads" needs, use the streaming-stick
+  → HDMI setup below.
 
 ## Rules encoded in the player (do not regress)
 

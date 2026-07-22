@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.5.29
+# ArenaSignage Player v1.5.30
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -341,3 +341,12 @@ Supabase schema (beyond the documented command types) are untouched.
   rules, and production recommendations (ethernet; streaming stick into
   HDMI as the robust "stream + webm ads" setup; animated webp as the
   zero-decoder ad format during browser streams).
+
+### 1.5.30 — YouTube stream is an exclusive fullscreen mode
+- Product rule, all platforms: while a YouTube override is active the
+  stream plays fullscreen with ZERO ads — no side rotation, no
+  takeovers. Ads resume automatically the moment the override ends or
+  expires. This defines away the LG one-decoder conflict entirely (the
+  stream is the only media pipeline on the panel) and makes the feature
+  behave identically everywhere. The webm hard gates remain underneath
+  as defense in depth.
