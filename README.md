@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.1
+# ArenaSignage Player v1.6.2
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -391,3 +391,16 @@ Supabase schema (beyond the documented command types) are untouched.
 - Zone playlists detect .webm/.mp4/.m4v as video; every other URL is
   tried as an image, so extensionless direct image links (e.g. CDN URLs)
   work. Videos still need a real file extension in the URL.
+
+### 1.6.2 — layouts Phase 2: ad-campaign zones
+- New "Ad campaigns" zone type: the full side-ad engine — eligibility,
+  weights, dayparting, house fillers, sequential fades, proof-of-play —
+  runs confined to the zone rect. One per layout; takeovers remain off
+  in custom layouts.
+- LG decoder arbitration: with an ads zone present, all media zones on
+  lg_si render images only (the ad engine owns the hardware decoder);
+  without one, the first media zone may decode video as before.
+- Browser screenshots composite ads at the zone rect in custom mode.
+- Admin: media zones gain a storage library with in-place Upload and
+  Browse/Add (URLs still accepted); preset controls and the YouTube
+  override now hide entirely while a custom layout is assigned.

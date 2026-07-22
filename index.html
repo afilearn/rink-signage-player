@@ -911,6 +911,9 @@ window.ARENA_SIGNAGE_CONFIG = {
     body.custom-layout.custom-no-schedule #preset-stage{ display:none; }
     body.custom-layout #ad-column, body.custom-layout #slide-zone,
     body.custom-layout #combined-display{ display:none !important; }
+    body.custom-layout.custom-ads-on #ad-column{
+      display:block !important; right:auto; bottom:auto; border-left:none;
+    }
     body.custom-layout #tv-zone{ display:none; }
     body.custom-layout.custom-tv-on #tv-zone{ display:block; width:auto; height:auto; }
     body.custom-layout #ticker{ display:none; }
@@ -1294,7 +1297,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.1';
+    var PLAYER_VERSION = '1.6.2';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -3085,6 +3088,18 @@ window.ARENA_SIGNAGE_CONFIG = {
 
     function screenshotAdRect(canvas){
       if (!canvas || !document.body || !document.body.classList.contains('ads-active')) return null;
+      if (document.body.classList.contains('custom-layout')){
+        if (!document.body.classList.contains('custom-ads-on')) return null;
+        var colEl = document.getElementById('ad-column');
+        var pf = function(v){ return parseFloat(v) || 0; };
+        if (!colEl || !colEl.style.width) return null;
+        return {
+          x: Math.round(canvas.width * pf(colEl.style.left) / 100),
+          y: Math.round(canvas.height * pf(colEl.style.top) / 100),
+          w: Math.max(1, Math.round(canvas.width * pf(colEl.style.width) / 100)),
+          h: Math.max(1, Math.round(canvas.height * pf(colEl.style.height) / 100))
+        };
+      }
       // Fullscreen ad modes: the ad owns the whole viewport, so the
       // composited ad must cover the entire screenshot canvas too.
       if (document.body.classList.contains('fs-only') || document.body.classList.contains('fs-takeover')) {
@@ -4799,7 +4814,13 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (tk0){ tk0.style.left = tk0.style.top = tk0.style.width = tk0.style.height = tk0.style.zIndex = ''; }
         var root0 = document.getElementById('zone-root');
         if (root0){ while (root0.firstChild) root0.removeChild(root0.firstChild); }
-        body.classList.remove('custom-layout', 'custom-no-schedule', 'custom-tv-on', 'custom-ticker-on');
+        var ac0 = document.getElementById('ad-column');
+        if (ac0){
+          ac0.style.left = ac0.style.top = ac0.style.width = ac0.style.height = '';
+          ac0.style.right = ac0.style.bottom = ac0.style.zIndex = '';
+        }
+        CLAYOUT.hasAds = false;
+        body.classList.remove('custom-layout', 'custom-no-schedule', 'custom-tv-on', 'custom-ticker-on', 'custom-ads-on');
         ADS.sig = '';   // preset pools rebuild on this very poll
         return;
       }
@@ -4826,15 +4847,30 @@ window.ARENA_SIGNAGE_CONFIG = {
       var root = document.getElementById('zone-root');
       while (root.firstChild) root.removeChild(root.firstChild);
 
-      var scheduleZone = null, tickerZone = null, tvZone = null;
+      var scheduleZone = null, tickerZone = null, tvZone = null, adsZone = null;
       var mediaZones = [];
       for (var i = 0; i < zones.length; i++){
         var zn = zones[i];
         if (zn.type === 'schedule' && !scheduleZone) scheduleZone = zn;
         else if (zn.type === 'ticker' && !tickerZone) tickerZone = zn;
         else if (zn.type === 'livetv' && !tvZone) tvZone = zn;
+        else if (zn.type === 'ads' && !adsZone) adsZone = zn;
         else if (zn.type === 'media') mediaZones.push(zn);
       }
+
+      // Ad campaigns zone: the full side-ad engine, confined to the rect.
+      CLAYOUT.hasAds = !!adsZone;
+      body.classList.toggle('custom-ads-on', !!adsZone);
+      var adCol = document.getElementById('ad-column');
+      if (adsZone && adCol){
+        czRect(adCol, adsZone);
+        adCol.style.right = 'auto';
+        adCol.style.bottom = 'auto';
+      } else if (adCol){
+        adCol.style.left = adCol.style.top = adCol.style.width = adCol.style.height = '';
+        adCol.style.right = adCol.style.bottom = adCol.style.zIndex = '';
+      }
+      ADS.sig = '';   // rebuild the rotation for/without the zone this poll
 
       // Schedule: scale the whole preset stage into the zone rect.
       body.classList.toggle('custom-no-schedule', !scheduleZone);
@@ -4889,7 +4925,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         var mzState = {
           items: items, idx: 0, video: v, img: im, timer: null,
           imageSecs: Math.min(120, Math.max(3, Number(zdef.settings && zdef.settings.image_duration) || 10)),
-          videoAllowed: !isLgSiPlatform() || m === 0
+          videoAllowed: !isLgSiPlatform() || (m === 0 && !CLAYOUT.hasAds)
         };
         CLAYOUT.mediaZones.push(mzState);
         if (items.length) czAdvanceMediaZone(mzState);
@@ -5098,9 +5134,10 @@ window.ARENA_SIGNAGE_CONFIG = {
         document.body.classList.remove('fs-rotate');
       }
       if (customLayoutActive()){
-        // Custom canvas layout: the preset ad engine pauses entirely
-        // (ad zones arrive in Phase 2).
-        updateAds([]);
+        // Custom canvas layout: the side-ad engine runs only when the
+        // layout contains an Ad campaigns zone (rect-confined); takeovers
+        // stay off in custom layouts either way.
+        updateAds(CLAYOUT.hasAds ? poolFor('side') : []);
         asgSyncMediaCache();
         return;
       }
