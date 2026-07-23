@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.9
+# ArenaSignage Player v1.6.10
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -475,3 +475,12 @@ Supabase schema (beyond the documented command types) are untouched.
   the existing portrait (bottom:30vh above bottom ads) and forced-
   orientation rules as originally written. Custom ticker zones are
   unaffected — their inline rect overrides the base.
+
+### 1.6.10 — preset YouTube streaming returns on Windows/Android
+- The YouTube override on preset screens is exclusive-fullscreen only on
+  LG SI (single-decoder rule). On browser (Windows Chrome) and Android
+  the stream now plays in the live-TV zone like before 1.5.30: side ads
+  keep rotating (video ads included), takeovers run (stream audio ducks
+  under video takeovers via the existing arbitration), and fullscreen
+  follows the screen's live-TV fullscreen toggle instead of being
+  forced. LG behavior is unchanged.
