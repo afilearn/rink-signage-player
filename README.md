@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.8
+# ArenaSignage Player v1.6.9
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -466,3 +466,12 @@ Supabase schema (beyond the documented command types) are untouched.
 - The bottom-right mark is the real logo.png (new Arena Signage brand
   logo shipped in this build); the styled text wordmark renders only if
   the file is missing.
+
+### 1.6.9 — preset ticker pinned to the bottom
+- The preset ticker had no position property and sat at the bottom only
+  by document flow; the 1.6.0 preset-stage wrapper changed that flow and
+  the bar floated up beneath the schedule content. The base ticker is
+  now position:fixed at left 0 / bottom 0 / 100vw, which also activates
+  the existing portrait (bottom:30vh above bottom ads) and forced-
+  orientation rules as originally written. Custom ticker zones are
+  unaffected — their inline rect overrides the base.

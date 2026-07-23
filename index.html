@@ -529,6 +529,16 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     #ticker {
+      /* Explicitly pinned: the preset ticker used to sit at the bottom by
+         document-flow accident, and the preset-stage wrapper (1.6.0)
+         changed that flow, floating it up under the schedule. Fixed
+         positioning also makes the long-standing portrait/ads bottom
+         rules actually work, and custom ticker zones still win via their
+         inline styles. */
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 100vw;
       height: 0;
       min-height: 0;
       border-top: none;
@@ -1307,7 +1317,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.8';
+    var PLAYER_VERSION = '1.6.9';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
