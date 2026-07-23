@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.12
+# ArenaSignage Player v1.6.10
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -484,18 +484,3 @@ Supabase schema (beyond the documented command types) are untouched.
   under video takeovers via the existing arbitration), and fullscreen
   follows the screen's live-TV fullscreen toggle instead of being
   forced. LG behavior is unchanged.
-
-### 1.6.11 — YouTube hover chrome suppressed
-- The YT iframe now has pointer-events:none: focus bouncing through the
-  Android WebView when a native webm ad starts was read as a hover and
-  painted the video title bar over the stream. The player controls
-  YouTube exclusively via the JS API, so the iframe needs no input.
-
-### 1.6.12 — Android stream smoothness
-- Reverted 1.6.11's pointer-events change on the YouTube iframe.
-- Root cause of the choppy stream + periodic title chrome on Android:
-  the stick cannot decode a YouTube stream and a webm ad concurrently;
-  every stutter recovery makes YouTube repaint its title bar. Android
-  now takes the same medicine as LG during a stream: video ads (side and
-  takeover pools) sit out, image/webp ads keep rotating, videos resume
-  when the stream ends. Windows Chrome behavior is unchanged.
