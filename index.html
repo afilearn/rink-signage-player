@@ -1275,6 +1275,24 @@ window.ARENA_SIGNAGE_CONFIG = {
     var BOOT_SPLASH_MIN_MS = 4000;
     var bootSplashShownAt = Date.now();
 
+    /* Native surfaces (UVC capture, zone videos) belong to the Android
+       app, not the page — a reload destroys the JS but leaves them
+       rendering on top, so the refresh appears to happen "behind" the
+       live TV. Release them on unload, and clear orphans at boot in case
+       the page went away without warning (crash, restart_app, kill). */
+    function releaseNativeSurfaces(){
+      try {
+        var np = window.NativePlayer;
+        if (!np) return;
+        if (typeof np.tvStop === 'function') np.tvStop();
+        if (typeof np.zoneStopAll === 'function') np.zoneStopAll();
+      } catch(e){}
+    }
+
+    (function clearOrphanNativeSurfaces(){ releaseNativeSurfaces(); })();
+    window.addEventListener('pagehide', releaseNativeSurfaces);
+    window.addEventListener('beforeunload', releaseNativeSurfaces);
+
     (function bootSplash(){
       var img = document.getElementById('boot-splash-img');
       if (!img) return;
@@ -1331,7 +1349,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.18';
+    var PLAYER_VERSION = '1.6.19';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4114,6 +4132,8 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function hardReloadPlayer(){
+      try { releaseNativeSurfaces(); } catch(e){}
+      try { NATIVETV.active = false; NATIVETV.want = false; } catch(e){}
       try {
         var nextUrl = new URL(window.location.href);
         nextUrl.searchParams.set('v', compactPlayerVersion(PLAYER_VERSION));

@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.18
+# ArenaSignage Player v1.6.19
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -557,3 +557,10 @@ Supabase schema (beyond the documented command types) are untouched.
 - Reload commands now report `reload_boot` to player_errors on the
   resulting boot, with the delay from the reload being issued — proof of
   whether the browser actually navigated.
+
+### 1.6.19 — native surfaces follow the page lifecycle
+- The Android UVC capture and native zone videos are app-owned views,
+  so a reload left them on screen while the page rebuilt underneath
+  (the live TV zone never went away during a refresh). They are now
+  released on pagehide/beforeunload, explicitly before a commanded
+  reload, and any orphaned surface is cleared at boot.
