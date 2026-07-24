@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.20
+# ArenaSignage Player v1.6.21
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -570,3 +570,9 @@ Supabase schema (beyond the documented command types) are untouched.
   soon as the first payload arrived covered the branded loading screen.
   tvStart now holds until the boot splash has lifted (splash keeps its
   own 4s minimum), then opens the zone.
+
+### 1.6.21 — signals the APK surface gate
+- Calls NativePlayer.pageReady() when the boot splash lifts. APK v1.7.5+
+  hides native surfaces (UVC capture, zone videos) from every navigation
+  until this signal, so a reload can no longer paint the capture over
+  the branded intro even if the page asks for it early.

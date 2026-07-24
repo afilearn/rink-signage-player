@@ -1346,10 +1346,18 @@ window.ARENA_SIGNAGE_CONFIG = {
         }
       }
       el.classList.add('gone');
+      /* Tell the APK (v1.7.5+) that the intro is done, so it may show
+         native surfaces again. Until this fires the APK keeps the capture
+         and zone videos hidden regardless of what the page requests. */
+      try {
+        if (window.NativePlayer && typeof window.NativePlayer.pageReady === 'function'){
+          window.NativePlayer.pageReady();
+        }
+      } catch(e){}
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.20';
+    var PLAYER_VERSION = '1.6.21';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
