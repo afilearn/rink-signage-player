@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.16
+# ArenaSignage Player v1.6.17
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -542,3 +542,7 @@ Supabase schema (beyond the documented command types) are untouched.
   session), so capture failures are visible in the database.
 - The sourceless DOM video's placeholder is hidden while native TV owns
   the zone (body.tv-native).
+
+### 1.6.17 — diagnostics throttle fix
+- livetv_native reports throttle per message instead of per type, so
+  the full attached/started event trail reaches the database.
