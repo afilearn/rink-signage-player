@@ -1330,7 +1330,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.14';
+    var PLAYER_VERSION = '1.6.15';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -4798,6 +4798,11 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
 
     function czStopMediaZones(){
+      try {
+        if (hasNativePlayer() && typeof window.NativePlayer.zoneStopAll === 'function'){
+          window.NativePlayer.zoneStopAll();
+        }
+      } catch(e){}
       for (var i = 0; i < CLAYOUT.mediaZones.length; i++){
         var mz = CLAYOUT.mediaZones[i];
         if (mz.timer) clearTimeout(mz.timer);
@@ -4825,6 +4830,18 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (hideEl) hideEl.classList.remove('showing');
         showEl.classList.add('showing');
       };
+      if (isVideo && mz.nativeVideo){
+        var hr = mz.host.getBoundingClientRect();
+        if (hr.width >= 2 && hr.height >= 2){
+          try {
+            window.NativePlayer.zonePlay(mz.zoneId, item, hr.left, hr.top, hr.width, hr.height, true, true);
+            mz.nativeOn = true;
+            mz.video.classList.remove('showing');
+            mz.img.classList.remove('showing');
+            return;
+          } catch(e){ /* fall through to the DOM video */ }
+        }
+      }
       if (isVideo){
         mz.video.onended = function(){
           if (mz.items.length > 1){ czAdvanceMediaZone(mz); }
@@ -4878,7 +4895,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         CLAYOUT.active = false; CLAYOUT.sig = '';
         czStopMediaZones();
         czDestroyYtZone();
-        stopLiveTv(); stopLgHdmiTv();
+        stopLiveTv(); stopLgHdmiTv(); stopNativeTv();
         var stage = document.getElementById('preset-stage');
         if (stage) stage.style.transform = '';
         var tz0 = document.getElementById('tv-zone');
@@ -5010,11 +5027,12 @@ window.ARENA_SIGNAGE_CONFIG = {
         AD_CFG.hdmiInput = Math.min(4, Math.max(1, Number(tvZone.settings && tvZone.settings.hdmi_input) || 1));
         AD_CFG.livetvAudio = !!(tvZone.settings && tvZone.settings.audio === true);
         if (isLgSiPlatform()){ stopLiveTv(); startLgHdmiTv(); }
+        else if (nativeTvSupported()){ stopLiveTv(); stopLgHdmiTv(); startNativeTv(); }
         else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
           stopLgHdmiTv(); LIVETV.want = true; startLiveTv();
         }
       } else {
-        stopLiveTv(); stopLgHdmiTv();
+        stopLiveTv(); stopLgHdmiTv(); stopNativeTv();
       }
 
       // Media zones: first zone may decode video everywhere; later zones
@@ -5038,7 +5056,14 @@ window.ARENA_SIGNAGE_CONFIG = {
           if (/^https:\/\//i.test(urls[u])) items.push(urls[u]);
         }
         var mzState = {
-          items: items, idx: 0, video: v, img: im, timer: null,
+          items: items, idx: 0, video: v, img: im, timer: null, host: host,
+          zoneId: 'mz' + m,
+          /* Single-item video zones loop natively on the APK (ExoPlayer +
+             disk cache, smooth). Multi-item rotations stay on the DOM
+             <video> until the APK emits zone 'ended' events. */
+          nativeVideo: isAndroidAppPlatform() && hasNativePlayer() &&
+            typeof window.NativePlayer.zonePlay === 'function' && items.length === 1,
+          nativeOn: false,
           imageSecs: Math.min(120, Math.max(3, Number(zdef.settings && zdef.settings.image_duration) || 10)),
           videoAllowed: !isLgSiPlatform() || (m === 0 && !CLAYOUT.hasAds)
         };
@@ -5130,6 +5155,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         try { czDestroyYtZone(); } catch(e){}
         try { stopLiveTv(); } catch(e){}
         try { stopLgHdmiTv(); } catch(e){}
+        try { stopNativeTv(); } catch(e){}
         try { destroyYouTubeTv(); } catch(e){}
         try { endTakeoverNowIfActive(); } catch(e){}
       } else {
@@ -5153,6 +5179,99 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
     }
 
+    /* ── Native live TV (Android APK v1.7+: UVC dongle via NativePlayer) ──
+       The APK renders the MS2109 capture into a rect-positioned native
+       TextureView layered ABOVE the WebView, so the rect is clipped to
+       stop above the ticker. tv-waiting stays on until the 'started'
+       event arrives from the native side. */
+    var NATIVETV = { active: false };
+
+    function nativeTvSupported(){
+      try {
+        return isAndroidAppPlatform() && hasNativePlayer() &&
+          typeof window.NativePlayer.tvStart === 'function' &&
+          (typeof window.NativePlayer.tvSupported !== 'function' || window.NativePlayer.tvSupported());
+      } catch(e){ return false; }
+    }
+
+    function nativeTvRect(){
+      var el = document.getElementById('tv-zone');
+      if (!el) return null;
+      var r = el.getBoundingClientRect();
+      var h = r.height;
+      var tk = document.getElementById('ticker');
+      if (tk && tk.offsetHeight > 0){
+        var tr = tk.getBoundingClientRect();
+        if (tr.top > r.top && tr.top < r.top + h) h = tr.top - r.top;
+      }
+      if (r.width < 2 || h < 2) return null;
+      return { x: r.left, y: r.top, w: r.width, h: h };
+    }
+
+    function startNativeTv(){
+      var r = nativeTvRect();
+      if (!r) return;
+      try {
+        if (!NATIVETV.active){
+          window.NativePlayer.tvStart(r.x, r.y, r.w, r.h);
+          NATIVETV.active = true;
+          if (document.body) document.body.classList.add('tv-waiting');
+        } else {
+          window.NativePlayer.tvSetRect(r.x, r.y, r.w, r.h);
+        }
+      } catch(e){}
+    }
+
+    function stopNativeTv(){
+      if (!NATIVETV.active) return;
+      NATIVETV.active = false;
+      try { window.NativePlayer.tvStop(); } catch(e){}
+      if (document.body) document.body.classList.remove('tv-waiting');
+    }
+
+    window.__nativeTvEvent = function(ev){
+      var body = document.body;
+      if (!body) return;
+      if (ev === 'started'){ body.classList.remove('tv-waiting'); }
+      else if (NATIVETV.active &&
+               (ev === 'stopped' || ev === 'detached' || ev === 'error' || ev === 'permission_denied')){
+        body.classList.add('tv-waiting');   // replugging the dongle auto-recovers
+      }
+    };
+
+    window.addEventListener('resize', function(){
+      if (NATIVETV.active) try { startNativeTv(); } catch(e){}
+    });
+
+    /* Native sequential fades (Android APK v1.7+): the APK ramps a black
+       scrim over the ad rect. fade_out_done continues the swap; a 700ms
+       failsafe covers a lost event so rotation can never stall. */
+    var NATIVEFADE = { pending: null, failsafe: null };
+
+    function nativeFadeSupported(){
+      try {
+        return isAndroidAppPlatform() && hasNativePlayer() &&
+          typeof window.NativePlayer.fadeOut === 'function';
+      } catch(e){ return false; }
+    }
+
+    function nativeFadeResolve(){
+      var fn = NATIVEFADE.pending;
+      NATIVEFADE.pending = null;
+      if (NATIVEFADE.failsafe){ clearTimeout(NATIVEFADE.failsafe); NATIVEFADE.failsafe = null; }
+      if (fn){
+        try { fn(); } catch(e){}
+        try { window.NativePlayer.fadeIn(400); } catch(e){}
+      }
+    }
+
+    function nativeFadeSwap(fn){
+      if (!nativeFadeSupported()){ fn(); return; }
+      NATIVEFADE.pending = fn;
+      try { window.NativePlayer.fadeOut(400); } catch(e){ nativeFadeResolve(); return; }
+      NATIVEFADE.failsafe = setTimeout(nativeFadeResolve, 700);
+    }
+
     function applyLiveTv(){
       if (isDisplaySleeping()) return;
       if (customLayoutActive()) return;   // zone renderer owns the TV engines
@@ -5160,7 +5279,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         !(document.body && document.body.classList.contains('combined-mode')) &&
         ytOverrideActive();
       var lgWant = isLgSiPlatform();
-      var supported = lgWant || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+      var supported = lgWant || nativeTvSupported() || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
       var want = AD_CFG.contentMode === 'livetv' &&
         AD_CFG.mode !== 'always' &&   // fullscreen-ads-only board always wins
         !(document.body && document.body.classList.contains('combined-mode'));
@@ -5188,6 +5307,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         // Release the capture device / HDMI plane while YouTube owns the zone.
         stopLiveTv();
         stopLgHdmiTv();
+        stopNativeTv();
         if (isLgSiPlatform() && !(document.body && document.body.classList.contains('tv-yt'))){
           // TRANSITION into YouTube mode only (tv-yt not yet set): silence
           // every ad pipeline before the stream claims the decoder, and
@@ -5201,7 +5321,7 @@ window.ARENA_SIGNAGE_CONFIG = {
         return;
       }
       destroyYouTubeTv();
-      if (!want){ stopLiveTv(); stopLgHdmiTv(); try { updateAdTextureMode(); } catch(e){} return; }
+      if (!want){ stopLiveTv(); stopLgHdmiTv(); stopNativeTv(); try { updateAdTextureMode(); } catch(e){} return; }
       if (lgWant){
         // LG panels: the panel's own HDMI input, no dongle.
         stopLiveTv();
@@ -5210,6 +5330,13 @@ window.ARENA_SIGNAGE_CONFIG = {
         return;
       }
       stopLgHdmiTv();
+      if (nativeTvSupported()){
+        // Android APK with UVC bridge: native capture, not getUserMedia.
+        stopLiveTv();
+        startNativeTv();
+        return;
+      }
+      stopNativeTv();
       tvApplyAudio();
       startLiveTv();
     }
@@ -5488,6 +5615,8 @@ window.ARENA_SIGNAGE_CONFIG = {
 
     // Events from the native player
     window.__nativePlayerEvent = function(id, ev){
+      if (ev === 'fade_out_done'){ nativeFadeResolve(); return; }
+      if (ev === 'fade_in_done'){ return; }
       if (!ADS.list.length) return;
       if (ev === 'ended'){
         var ad = adAt(0);
@@ -5742,6 +5871,15 @@ window.ARENA_SIGNAGE_CONFIG = {
         // Fade out a showing image before the native surface takes over.
         // (Native video sits above the WebView, so its own appearance is a
         // cut — a true native fade needs an APK bridge addition.)
+        if (nativeFadeSupported()){
+          // Native-to-native swaps have no DOM element to fade; the APK's
+          // scrim ramps to black over the ad rect, we swap, it ramps away.
+          nativeFadeSwap(function(){
+            els.img.style.display = 'none';
+            nativePlayCurrent(ad);
+          });
+          return;
+        }
         fadeOutCurrentAdVisual(function(){
           els.img.style.display = 'none';
           nativePlayCurrent(ad);

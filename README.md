@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.14
+# ArenaSignage Player v1.6.15
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -521,3 +521,16 @@ Supabase schema (beyond the documented command types) are untouched.
   first candidates 404 and content renders quickly (warm LG reloads).
   Note branding.gif is a repo asset, not part of these zips — keep it
   in the repo root when deploying.
+
+### 1.6.15 — Android APK v1.7 bridge wiring (TV, fades, zones)
+- Live TV on the Android APK now drives the native UVC capture
+  (NativePlayer.tvStart/tvSetRect/tvStop) for preset livetv mode and
+  custom-layout livetv zones; the capture rect clips above the ticker,
+  tv-waiting clears on the native 'started' event, and dongle unplug/
+  replug self-recovers. Older APKs fall back to the previous behavior.
+- Native ad swaps use the APK's scrim fade (fadeOut/fade_out_done/
+  fadeIn, 700ms failsafe) so native-to-native transitions fade like the
+  web platforms instead of hard-cutting.
+- Single-item video media zones in custom layouts play natively on the
+  APK (looping ExoPlayer + disk cache); multi-item rotations remain DOM
+  video until the APK emits zone ended events.
