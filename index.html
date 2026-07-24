@@ -1331,7 +1331,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.17';
+    var PLAYER_VERSION = '1.6.18';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -5221,33 +5221,57 @@ window.ARENA_SIGNAGE_CONFIG = {
       try { reportPlayerError('livetv_native', message, context || {}); } catch(e){}
     }
 
-    function startNativeTv(){
+    function syncNativeTvRect(){
+      if (!NATIVETV.active) return;
       var r = nativeTvRect();
       if (!r) return;
-      try {
-        if (!NATIVETV.active){
+      var key = Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.w) + ',' + Math.round(r.h);
+      if (key === NATIVETV.rectKey) return;
+      NATIVETV.rectKey = key;
+      try { window.NativePlayer.tvSetRect(r.x, r.y, r.w, r.h); } catch(e){}
+    }
+
+    function startNativeTv(){
+      if (NATIVETV.active){ syncNativeTvRect(); return; }
+      NATIVETV.want = true;
+      if (NATIVETV.starting) return;
+      NATIVETV.starting = true;
+      /* Deferred one tick on purpose: applyLiveTv() runs BEFORE updateAds()
+         in the same payload pass, so measuring now returns the zone at full
+         width (no ads-active yet) — the capture would open fullscreen and
+         then snap to the left zone. One tick later the ad classes are on
+         and the first rect is already correct. */
+      setTimeout(function(){
+        NATIVETV.starting = false;
+        if (!NATIVETV.want) return;
+        var r = nativeTvRect();
+        if (!r) return;
+        try {
           window.NativePlayer.tvStart(r.x, r.y, r.w, r.h);
           NATIVETV.active = true;
+          NATIVETV.rectKey = Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.w) + ',' + Math.round(r.h);
           if (document.body){
             document.body.classList.add('tv-waiting');
             document.body.classList.add('tv-native');
           }
           nativeTvLog('tvStart called', { rect: r });
+          setTimeout(syncNativeTvRect, 300);    // late layout (fonts, ticker)
+          setTimeout(syncNativeTvRect, 1200);
           setTimeout(function(){
             if (!NATIVETV.active) return;
             var st = '';
             try { st = String(window.NativePlayer.tvStatus()); } catch(e){ st = 'tvStatus threw: ' + e; }
             nativeTvLog('tvStatus after 5s', { status: st.slice(0, 300) });
           }, 5000);
-        } else {
-          window.NativePlayer.tvSetRect(r.x, r.y, r.w, r.h);
+        } catch(e){
+          nativeTvLog('tvStart threw', { message: String(e && e.message || e).slice(0, 300) });
         }
-      } catch(e){
-        nativeTvLog('tvStart threw', { message: String(e && e.message || e).slice(0, 300) });
-      }
+      }, 0);
     }
 
     function stopNativeTv(){
+      NATIVETV.want = false;
+      NATIVETV.rectKey = '';
       if (!NATIVETV.active) return;
       NATIVETV.active = false;
       try { window.NativePlayer.tvStop(); } catch(e){}
@@ -5781,12 +5805,14 @@ window.ARENA_SIGNAGE_CONFIG = {
 
       if (list.length === 0){
         if (document.body) document.body.classList.remove('ads-active');
+        try { syncNativeTvRect(); } catch(e){}
         stopAllAdMedia();
         ADS.list = []; ADS.sig = ''; ADS.idx = 0;
         return;
       }
 
       if (document.body) document.body.classList.add('ads-active');
+      try { syncNativeTvRect(); } catch(e){}
 
       if (sig !== ADS.sig){
         ADS.sig = sig;
@@ -6844,6 +6870,18 @@ window.ARENA_SIGNAGE_CONFIG = {
       }
 
       sendHealthEvent('boot');
+      /* Reload verification: hardReloadPlayer() stamps _reload=<ms> on the
+         URL. Seeing this report proves the browser actually navigated, and
+         the gap to the command row shows how long it took. */
+      try {
+        var reloadStamp = (String(window.location.search).match(/[?&]_reload=(\d+)/) || [])[1];
+        if (reloadStamp){
+          reportPlayerError('reload_boot', 'player booted from reload command', {
+            issued_at_ms: Number(reloadStamp),
+            boot_delay_ms: Date.now() - Number(reloadStamp)
+          });
+        }
+      } catch(e){}
       sendDeviceStatus();
       setTimeout(checkForPlayerUpdate, 1500);
       setInterval(checkForPlayerUpdate, 300000);

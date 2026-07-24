@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.17
+# ArenaSignage Player v1.6.18
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -546,3 +546,14 @@ Supabase schema (beyond the documented command types) are untouched.
 ### 1.6.17 — diagnostics throttle fix
 - livetv_native reports throttle per message instead of per type, so
   the full attached/started event trail reaches the database.
+
+### 1.6.18 — native TV rect fix + reload verification
+- Android UVC capture no longer opens fullscreen and snap back to the
+  left zone: applyLiveTv() runs before updateAds() applies `ads-active`,
+  so the first measurement saw a full-width zone. tvStart is now
+  deferred one tick (classes already applied), the rect re-syncs
+  whenever the ad zone appears/disappears, and two late re-measures
+  (300ms/1200ms) catch font/ticker settling.
+- Reload commands now report `reload_boot` to player_errors on the
+  resulting boot, with the delay from the reload being issued — proof of
+  whether the browser actually navigated.
