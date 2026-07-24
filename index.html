@@ -1349,7 +1349,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.19';
+    var PLAYER_VERSION = '1.6.20';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -5241,6 +5241,11 @@ window.ARENA_SIGNAGE_CONFIG = {
       try { reportPlayerError('livetv_native', message, context || {}); } catch(e){}
     }
 
+    function bootSplashVisible(){
+      var el = document.getElementById('boot-splash');
+      return !!(el && !el.classList.contains('gone'));
+    }
+
     function syncNativeTvRect(){
       if (!NATIVETV.active) return;
       var r = nativeTvRect();
@@ -5264,6 +5269,22 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){
         NATIVETV.starting = false;
         if (!NATIVETV.want) return;
+        /* The capture surface renders ABOVE the WebView, so starting it
+           while the branded boot splash is up hides the intro entirely.
+           Hold until the splash lifts (it enforces its own minimum), then
+           open the zone. */
+        if (bootSplashVisible()){
+          if (!NATIVETV.splashWait){
+            NATIVETV.splashWait = setInterval(function(){
+              if (!NATIVETV.want || !bootSplashVisible()){
+                clearInterval(NATIVETV.splashWait);
+                NATIVETV.splashWait = null;
+                if (NATIVETV.want && !NATIVETV.active) startNativeTv();
+              }
+            }, 200);
+          }
+          return;
+        }
         var r = nativeTvRect();
         if (!r) return;
         try {
@@ -5292,6 +5313,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     function stopNativeTv(){
       NATIVETV.want = false;
       NATIVETV.rectKey = '';
+      if (NATIVETV.splashWait){ clearInterval(NATIVETV.splashWait); NATIVETV.splashWait = null; }
       if (!NATIVETV.active) return;
       NATIVETV.active = false;
       try { window.NativePlayer.tvStop(); } catch(e){}

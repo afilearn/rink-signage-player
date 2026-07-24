@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.19
+# ArenaSignage Player v1.6.20
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -564,3 +564,9 @@ Supabase schema (beyond the documented command types) are untouched.
   (the live TV zone never went away during a refresh). They are now
   released on pagehide/beforeunload, explicitly before a commanded
   reload, and any orphaned surface is cleared at boot.
+
+### 1.6.20 — capture waits for the boot splash
+- The native UVC surface draws above the WebView, so restarting it as
+  soon as the first payload arrived covered the branded loading screen.
+  tvStart now holds until the boot splash has lifted (splash keeps its
+  own 4s minimum), then opens the zone.
