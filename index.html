@@ -898,6 +898,7 @@ window.ARENA_SIGNAGE_CONFIG = {
     #tv-hdmi video{ position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain; background:#000; }
     body.tv-hdmi #tv-hdmi{ display:block; }
     body.tv-hdmi #tv-video{ display:none; }
+    body.tv-native #tv-video{ display:none; }
     #tv-status{
       position:absolute; top:0; left:0; width:100%; height:100%;
       display:none; align-items:center; justify-content:center; text-align:center;
@@ -1330,7 +1331,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.15';
+    var PLAYER_VERSION = '1.6.16';
     var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
@@ -5208,6 +5209,15 @@ window.ARENA_SIGNAGE_CONFIG = {
       return { x: r.left, y: r.top, w: r.width, h: h };
     }
 
+    function nativeTvLog(message, context){
+      // Diagnostics: the native capture flow was a black box (events only
+      // toggled CSS). Throttled to one report per event type per session.
+      NATIVETV.logged = NATIVETV.logged || {};
+      if (NATIVETV.logged[message]) return;
+      NATIVETV.logged[message] = true;
+      try { reportPlayerError('livetv_native', message, context || {}); } catch(e){}
+    }
+
     function startNativeTv(){
       var r = nativeTvRect();
       if (!r) return;
@@ -5215,21 +5225,34 @@ window.ARENA_SIGNAGE_CONFIG = {
         if (!NATIVETV.active){
           window.NativePlayer.tvStart(r.x, r.y, r.w, r.h);
           NATIVETV.active = true;
-          if (document.body) document.body.classList.add('tv-waiting');
+          if (document.body){
+            document.body.classList.add('tv-waiting');
+            document.body.classList.add('tv-native');
+          }
+          nativeTvLog('tvStart called', { rect: r });
+          setTimeout(function(){
+            if (!NATIVETV.active) return;
+            var st = '';
+            try { st = String(window.NativePlayer.tvStatus()); } catch(e){ st = 'tvStatus threw: ' + e; }
+            nativeTvLog('tvStatus after 5s', { status: st.slice(0, 300) });
+          }, 5000);
         } else {
           window.NativePlayer.tvSetRect(r.x, r.y, r.w, r.h);
         }
-      } catch(e){}
+      } catch(e){
+        nativeTvLog('tvStart threw', { message: String(e && e.message || e).slice(0, 300) });
+      }
     }
 
     function stopNativeTv(){
       if (!NATIVETV.active) return;
       NATIVETV.active = false;
       try { window.NativePlayer.tvStop(); } catch(e){}
-      if (document.body) document.body.classList.remove('tv-waiting');
+      if (document.body) document.body.classList.remove('tv-waiting', 'tv-native');
     }
 
-    window.__nativeTvEvent = function(ev){
+    window.__nativeTvEvent = function(ev, detail){
+      nativeTvLog('event: ' + ev, { detail: String(detail || '').slice(0, 300) });
       var body = document.body;
       if (!body) return;
       if (ev === 'started'){ body.classList.remove('tv-waiting'); }

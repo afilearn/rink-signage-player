@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.15
+# ArenaSignage Player v1.6.16
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -534,3 +534,11 @@ Supabase schema (beyond the documented command types) are untouched.
 - Single-item video media zones in custom layouts play natively on the
   APK (looping ExoPlayer + disk cache); multi-item rotations remain DOM
   video until the APK emits zone ended events.
+
+### 1.6.16 — native TV diagnostics
+- Every native TV bridge event (attached/started/stopped/error/
+  permission_denied), tvStart exceptions, and a 5-second tvStatus
+  snapshot are reported to player_errors as livetv_native (throttled per
+  session), so capture failures are visible in the database.
+- The sourceless DOM video's placeholder is hidden while native TV owns
+  the zone (body.tv-native).
