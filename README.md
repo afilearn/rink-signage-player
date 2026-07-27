@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.21
+# ArenaSignage Player v1.6.22
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -576,3 +576,9 @@ Supabase schema (beyond the documented command types) are untouched.
   hides native surfaces (UVC capture, zone videos) from every navigation
   until this signal, so a reload can no longer paint the capture over
   the branded intro even if the page asks for it early.
+
+### 1.6.22 — native capture audio
+- tvApplyAudio() now drives the APK's tvSetAudio (v1.7.6+): live TV
+  audio on Android follows the same per-screen setting and takeover
+  ducking policy as the web platforms; applied when the capture reports
+  started.
