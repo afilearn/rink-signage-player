@@ -1,4 +1,4 @@
-# ArenaSignage Player v1.6.22
+# ArenaSignage Player v1.6.23
 
 All files live flat in the repo root — upload every file below together
 (no subfolders). After Cloudflare Pages finishes deploying, verify by opening
@@ -582,3 +582,24 @@ Supabase schema (beyond the documented command types) are untouched.
   audio on Android follows the same per-screen setting and takeover
   ducking policy as the web platforms; applied when the capture reports
   started.
+
+### 1.6.23 — reliability fixes (Nov 2026)
+- Ticker guard: if the ticker has text but is not actually on screen
+  (field report: missing with an empty schedule), it is re-applied every
+  5s and the state it found is logged once as a `ticker_guard` player
+  error so the root cause is visible in the dashboard.
+- LG power control: every luna candidate failure is now logged (only the
+  legacy tv.signage error was recorded before); two more candidates
+  added (tvpower with standbyMode, settingsservice screenOff). If no
+  service works, the soft sleep overlay is used as a fallback so the
+  schedule and Screen on/off still take visible effect; the command acks
+  `via: sleep_overlay_fallback` with the luna error.
+- LG system info: firmware, webOS SDK and model are read from the
+  system-property service and reported as OS version / model, plus
+  `capabilities.lg_system`.
+- Video errors now name the failing asset (ad name, URL, src, media
+  type, placement) and include the browser's own error message, decoder
+  code name and element state.
+- PLAYER_VERSION 1.6.23. Pairs with Worker 1.3.14 (unchanged) and the
+  dashboard v1.6.12 + `database/reliability_v1_6_12.sql` (server-side
+  offline detection, command expiry, queued power commands).
