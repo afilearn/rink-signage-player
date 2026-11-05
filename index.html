@@ -1357,8 +1357,8 @@ window.ARENA_SIGNAGE_CONFIG = {
       setTimeout(function(){ try { el.parentNode && el.parentNode.removeChild(el); } catch(e){} }, 900);
     }
 
-    var PLAYER_VERSION = '1.6.22';
-    var PLAYER_UPDATED_AT = '2026-07-15T03:45:00.000Z';
+    var PLAYER_VERSION = '1.6.23';
+    var PLAYER_UPDATED_AT = '2026-11-04T01:00:00.000Z';
     var deviceState = {
       lastContentSyncAt: null,
       lastAdCampaignId: null,
@@ -2821,7 +2821,8 @@ window.ARENA_SIGNAGE_CONFIG = {
         screenshot_method: caps.screenshot_method || '',
         native_app_version: caps.app_version || '',
         native_bridge_version: caps.bridge_version || '',
-        screenshot_dom: typeof window.html2canvas === 'function'
+        screenshot_dom: typeof window.html2canvas === 'function',
+        lg_system: lgSystemInfo || null
       };
     }
 
@@ -2830,7 +2831,7 @@ window.ARENA_SIGNAGE_CONFIG = {
       var nd = networkDetails();
       return {
         platform: pd.platform,
-        model: pd.model,
+        model: (lgSystemInfo && lgSystemInfo.model) ? 'LG ' + lgSystemInfo.model : pd.model,
         screen_width: window.screen ? window.screen.width : window.innerWidth,
         screen_height: window.screen ? window.screen.height : window.innerHeight,
         orientation: window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait',
@@ -2838,8 +2839,11 @@ window.ARENA_SIGNAGE_CONFIG = {
         player_updated_at: PLAYER_UPDATED_AT,
         browser_name: pd.browser_name,
         browser_version: pd.browser_version,
-        os_name: pd.os_name,
-        os_version: pd.os_version,
+        os_name: lgSystemInfo ? 'webOS Signage' : pd.os_name,
+        // LG: "sdk 3.2.0 · fw 04.01.30" so firmware is visible in the dashboard
+        os_version: lgSystemInfo
+          ? [lgSystemInfo.sdk ? 'sdk ' + lgSystemInfo.sdk : '', lgSystemInfo.firmware ? 'fw ' + lgSystemInfo.firmware : ''].filter(Boolean).join(' · ')
+          : pd.os_version,
         user_agent: navigator.userAgent || '',
         network_type: nd.network_type,
         network_downlink_mbps: nd.network_downlink_mbps,
@@ -3502,9 +3506,16 @@ window.ARENA_SIGNAGE_CONFIG = {
       return null;
     }
 
+    /* 1.6.23: every candidate's failure is kept (lunaTry.failures), not just
+       the last one — player_errors only ever showed the legacy tv.signage
+       error, hiding what tvpower actually answered. */
     function lunaTry(candidates, index, ok, fail, lastError){
+      if (index === 0) lunaTry.failures = [];
+      if (lastError) lunaTry.failures.push(lastError);
       if (index >= candidates.length) {
-        return fail(new Error(lastError || 'No luna power service responded'));
+        var err = new Error(lunaTry.failures.length ? lunaTry.failures.join(' | ') : 'No luna power service responded');
+        err.failures = lunaTry.failures.slice();
+        return fail(err);
       }
       var c = candidates[index];
       var service = lunaService();
@@ -3549,8 +3560,16 @@ window.ARENA_SIGNAGE_CONFIG = {
     function scapSetDisplay(mode, ok, fail){
       loadScapLibrary().then(function(){
         var method = mode === 'off' ? 'turnOffScreen' : 'turnOnScreen';
+        /* 1.6.23 candidate chain. Logs showed BOTH tvpower and tv.signage
+           failing on the 49UM5N (webOS 3.2 signage, SI URL mode); only the
+           tv.signage error was recorded. Added: tvpower with the
+           standbyMode parameter newer webOS builds require, and the
+           settings-service screen-mute path. All failures are now logged. */
         lunaTry([
           { uri: 'luna://com.webos.service.tvpower/power', method: method },
+          { uri: 'luna://com.webos.service.tvpower/power', method: method, parameters: { standbyMode: 'active' } },
+          { uri: 'luna://com.webos.settingsservice', method: 'setSystemSettings',
+            parameters: { category: 'option', settings: { screenOff: mode === 'off' ? 'on' : 'off' } } },
           { uri: 'luna://com.webos.service.tv.signage', method: method }
         ], 0, ok, fail);
       });
@@ -3582,6 +3601,41 @@ window.ARENA_SIGNAGE_CONFIG = {
       });
     }
     setTimeout(function(){ ensurePowerOnStatus(); }, 20000);
+
+    /* 1.6.23 — LG system info (firmware / webOS SDK / model). The user agent
+       only exposes the Chrome version, so the dashboard could not tell which
+       panels run which firmware (needed to decide on the 04.01.30 upgrade and
+       to debug power control). Read once from the system-property service
+       and merged into the device report. */
+    var lgSystemInfo = null;
+    function probeLgSystemInfo(){
+      if (platformDetails().platform !== 'lg_si' || lgSystemInfo) return;
+      loadScapLibrary().then(function(){
+        var service = lunaService();
+        if (!service) return;
+        try {
+          service.Request('luna://com.webos.service.tv.systemproperty', {
+            method: 'getSystemInfo',
+            parameters: { keys: ['firmwareVersion', 'modelName', 'sdkVersion', 'boardType', 'serialNumber'] },
+            onSuccess: function(r){
+              if (!r || r.returnValue === false) return;
+              lgSystemInfo = {
+                firmware: String(r.firmwareVersion || ''),
+                model: String(r.modelName || ''),
+                sdk: String(r.sdkVersion || ''),
+                board: String(r.boardType || ''),
+                serial: String(r.serialNumber || '')
+              };
+              try { sendDeviceStatus(); } catch(e){}
+            },
+            onFailure: function(err){
+              try { reportPlayerError('lg_system_info', 'getSystemInfo failed: ' + JSON.stringify(err), {}); } catch(e){}
+            }
+          });
+        } catch(e){}
+      });
+    }
+    setTimeout(probeLgSystemInfo, 25000);
 
     /* Reboot on this firmware is trial-and-error territory:
        - com.webos.service.tv.signage (all SCAP libs) is absent/blocked here.
@@ -3676,8 +3730,16 @@ window.ARENA_SIGNAGE_CONFIG = {
         setDisplaySleep(issued === 'off');
         return;
       }
-      scapSetDisplay(issued, function(){}, function(err){
-        reportPlayerError('power_schedule', (err && err.message) || 'scheduled display switch failed', { action: issued });
+      scapSetDisplay(issued, function(){
+        setDisplaySleep(false);   // real panel control worked — make sure the soft overlay is off
+      }, function(err){
+        /* 1.6.23: if no luna power service works on this firmware, fall back
+           to the soft sleep overlay (black screen, media stopped) so the
+           schedule still visibly takes effect; the failure list is logged so
+           the right luna service can be identified from the dashboard. */
+        setDisplaySleep(issued === 'off');
+        reportPlayerError('power_schedule', (err && err.message) || 'scheduled display switch failed',
+          { action: issued, fallback: 'sleep_overlay', failures: (err && err.failures) || [] });
       });
     }
     setInterval(checkPowerSchedule, 30000);
@@ -4036,11 +4098,18 @@ window.ARENA_SIGNAGE_CONFIG = {
           return;
         }
         scapSetDisplay(wantMode, function(usedService){
+          setDisplaySleep(false);
           deviceState.commandBusy = false;
           ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode, via: usedService });
         }, function(err){
+          /* 1.6.23: soft fallback (see checkPowerSchedule) — completes with
+             via:'sleep_overlay_fallback' and logs every luna failure. */
+          setDisplaySleep(wantMode === 'off');
           deviceState.commandBusy = false;
-          ackCommand(command.id, 'failed', {}, (err && err.message) || 'setDisplayMode failed');
+          reportPlayerError('display_power', (err && err.message) || 'setDisplayMode failed',
+            { action: wantMode, fallback: 'sleep_overlay', failures: (err && err.failures) || [], command_id: command.id });
+          ackCommand(command.id, 'completed', { action: 'display_power', mode: wantMode, via: 'sleep_overlay_fallback',
+            luna_error: (err && err.message) || 'setDisplayMode failed' });
         });
         return;
       }
@@ -4280,7 +4349,64 @@ window.ARENA_SIGNAGE_CONFIG = {
     }
     
     function animationLoop(){ /* retired: ticker now runs as a CSS animation (startCssTicker) */ }
-    
+
+    /* 1.6.23 — ticker guard. Field report: with an empty schedule the header
+       and empty-screen rendered but the ticker was missing, and it came back
+       as soon as a booking was added. Not reproducible in the lab (Worker,
+       DB bundle and renderFromPayload all set the ticker independently of
+       events), so this watchdog (a) re-applies the ticker whenever it has
+       text but isn't actually on screen, and (b) reports the state it found
+       once per boot as a `ticker_guard` player error so the real cause shows
+       up in the errors dashboard. Modes that legitimately hide the ticker
+       (fullscreen-only board, TV takeover, custom layout without a ticker
+       zone, display asleep) are skipped. */
+    var TICKER_GUARD = { reported: false, fixes: 0 };
+    function tickerLegitimatelyHidden(){
+      var b = document.body; if (!b) return true;
+      var c = b.classList;
+      if (c.contains('fs-only') || c.contains('fs-takeover') || c.contains('tv-full')) return true;
+      if (c.contains('custom-layout') && !c.contains('custom-ticker-on')) return true;
+      try { if (isDisplaySleeping()) return true; } catch(e){}
+      return false;
+    }
+    function tickerGuardTick(){
+      try {
+        if (!TICKER.text) return;
+        if (tickerLegitimatelyHidden()) return;
+        var holder = document.getElementById('ticker');
+        var track = document.getElementById('ticker-track');
+        if (!holder || !track) return;
+        var cs = window.getComputedStyle(holder);
+        var rect = holder.getBoundingClientRect();
+        var visible = holder.classList.contains('active') && cs.display !== 'none' &&
+                      cs.visibility !== 'hidden' && rect.height > 2 && rect.width > 2 &&
+                      rect.top < window.innerHeight && rect.bottom > 0 &&
+                      (track.textContent || '') === TICKER.text;
+        if (visible) return;
+        var ctx = {
+          cls: holder.className, display: cs.display, visibility: cs.visibility,
+          h: Math.round(rect.height), top: Math.round(rect.top), vh: window.innerHeight,
+          trackText: (track.textContent || '').slice(0, 40), want: TICKER.text.slice(0, 40),
+          body: document.body.className,
+          emptyScreen: (function(){ var e = document.getElementById('empty-screen'); return e ? window.getComputedStyle(e).display : ''; })(),
+          eventScreen: (function(){ var e = document.getElementById('event-screen'); return e ? window.getComputedStyle(e).display : ''; })(),
+          events: state.lastPayload && Array.isArray(state.lastPayload.events) ? state.lastPayload.events.length : -1,
+          fixes: TICKER_GUARD.fixes
+        };
+        TICKER_GUARD.fixes++;
+        holder.classList.add('active');
+        holder.style.display = '';
+        track.textContent = TICKER.text;
+        measureTicker();
+        startCssTicker(track);
+        if (!TICKER_GUARD.reported){
+          TICKER_GUARD.reported = true;
+          try { reportPlayerError('ticker_guard', 'Ticker had text but was not visible; re-applied', ctx); } catch(e){}
+        }
+      } catch(e){}
+    }
+    setInterval(tickerGuardTick, 5000);
+
     window.addEventListener('resize', function(){
       measureTicker();
       var t = document.getElementById('ticker-track');
@@ -6172,9 +6298,25 @@ window.ARENA_SIGNAGE_CONFIG = {
         });
 
         v.addEventListener('error', function(){
-          var ad = adAt(0);
-          var mediaError = v.error ? ('MediaError ' + v.error.code) : 'Video playback error';
-          reportPlayerError('video', mediaError, { campaign_id: ad && ad.id, media_url: ad && ad.media_url });
+          /* 1.6.23: identify the asset from the element that failed (the
+             preloading buffer may fail, not the ad at index 0) and include
+             the browser's own error message + element state. */
+          var src = v.currentSrc || v.src || '';
+          var ad = null;
+          for (var ai = 0; ai < ADS.list.length; ai++){
+            var cand = ADS.list[ai];
+            if (cand && cand.media_url && src && src.indexOf(cand.media_url) !== -1) { ad = cand; break; }
+          }
+          if (!ad) ad = adAt(0);
+          var codeNames = { 1: 'ABORTED', 2: 'NETWORK', 3: 'DECODE', 4: 'SRC_NOT_SUPPORTED' };
+          var mediaError = v.error ? ('MediaError ' + v.error.code + ' ' + (codeNames[v.error.code] || '')) : 'Video playback error';
+          reportPlayerError('video', mediaError.trim(), {
+            campaign_id: ad && ad.id, ad_name: ad && ad.name, media_url: (ad && ad.media_url) || src,
+            src: src.slice(0, 300), media_type: ad && ad.media_type,
+            browser_message: (v.error && v.error.message) || '',
+            network_state: v.networkState, ready_state: v.readyState,
+            placement: ad && ad.placement, takeover: !!(TAKEOVER && TAKEOVER.active)
+          });
           if (ADS.swapping || v === ADS.active) setTimeout(nextAd, 3000); // skip broken file
         });
       }
